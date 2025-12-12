@@ -1,8 +1,37 @@
-#ModelButton {
+.header {
     position: absolute;
-    bottom: 15px;
-    left: 20%;
-    transform: translateX(-50%);
-    padding: 15px 15px;
-    cursor: pointer;
+    top: 1%;
+    left: 0%;
+    background-color: aliceblue;
+    width: 414px;
+    height: 80px;
+    text-align: center;
+    color: #ef2626;
+}
+
+
+
+
+#ModelButton {
+    bottom: 25px;
+    left: 10%;
+    position: absolute;
+    border: 0;
+    border-radius: 60px;
+    background: #4676D7;
+    color: #fff;
+    padding: 8px 16px;
+    font-size: 16px;
+}
+
+
+#ShotButton {
+    width: 65px;
+    height: 65px;
+    bottom: 100px;
+    left: 44%;
+    position: absolute;
+    border: 0;
+    border-radius: 100%;
+    background-color: #fff;
 }
