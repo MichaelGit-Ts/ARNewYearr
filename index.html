@@ -5,31 +5,30 @@
     <meta name="viewport" content="width=device-width, user-scalable=No, initial-scale=1.0">
     <title>Новый Год</title>
 
-    <link rel="stylesheet" href="styles.css">
-    <script src="script.js" defer></script>
-
-    <script src="JS_library/aframe-ar.js"></script>
-    <script src="JS_library/aframe-extras.min.js"></script>
     <script src="JS_library/aframe.min.js"></script>
+    <script src="JS_library/aframe-extras.min.js"></script>
+    <script src="JS_library/aframe-ar.js"></script>
     <script src="JS_library/jquery.min.js"></script>
 
+    <link rel="stylesheet" href="styles.css">
+    <script src="script.js" defer></script>
 </head>
 <body>
     <a-scene 
-        embedded
-        vr-mode-ui="enabled: False"
-        arjs="debugUIenabled">
+            embedded
+            arjs="debugUIenabled: False"
+            vr-mode-UI="disabled">
         <a-assets>
             <a-asset-item
-            id="bus"
-            scr="models/новогодний автобус V2.glb">
+                id="bus"
+                scr="models/новогодний автобус V2.glb">
             </a-asset-item>
         </a-assets>
-        <a-entity
-            id="SceneCamera"
-            gltf-model="models/новогодний автобус V2.glb"
-            scale="1 1 1" position="0 0 0" rotation="90 0 0">
-        </a-entity>
+            <a-entity
+                id="SceneCamera"
+                gltf-model="models/новогодний автобус V2.glb"
+                scale="0.1 0.1 0.1" position="0 0 0" rotation="90 0 0">
+            </a-entity>
         <a-entity-camera></a-entity-camera>
     </a-scene>
 </body>
