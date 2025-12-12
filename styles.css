@@ -7,6 +7,8 @@
     height: 80px;
     text-align: center;
     color: #ef2626;
+    border: 0;
+    border-radius: 15%;
 }
 
 
