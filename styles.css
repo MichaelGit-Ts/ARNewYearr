@@ -1,18 +1,8 @@
-#buttonList {
+#ModelButton {
     position: absolute;
     bottom: 15px;
     left: 20%;
     transform: translateX(-50%);
     padding: 15px 15px;
     cursor: pointer;
-}
-
-#shotButton {
-    position: absolute;
-    bottom: 100px;
-    left: 50%;
-    transform: translateX(-50%);
-    padding: 15px 15px;
-    cursor: pointer;
-    background-color: #ffffff;
 }
