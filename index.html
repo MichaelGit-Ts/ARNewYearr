@@ -9,7 +9,6 @@
     <script src="JS_library/aframe-extras.min.js"></script>
     <script src="JS_library/aframe-ar.js"></script>
     <script src="JS_library/jquery.min.js"></script>
-
     <link rel="stylesheet" href="styles.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -17,10 +16,12 @@
     <script src="script.js" defer></script>
 </head>
 <body class="body">
-    <a-scene 
+    <a-scene
+            screenshot-capture 
             embedded
-            arjs="debugUIenabled: False"
-            vr-mode-UI="disabled">
+            arjs="sourceType: webcam; debugUIenabled: False; detectionMode: mono_and_matrix; matrixCodeType: 3x3;"
+            vr-mode-UI="disabled"
+            renderer="antialias: true; alpha: false; precision: medium;">
         <a-assets>
             <a-asset-item
                 id="bus"
@@ -32,7 +33,7 @@
                 gltf-model="models/новогодний автобус V2.glb"
                 scale="0.1 0.1 0.1" position="0 5 0" rotation="0 0 0">
             </a-entity>
-        <a-entity-camera></a-entity-camera>
+        <a-entity camera></a-entity camera>
     </a-scene>
     <header class="header">
         <h1 id="title">С Новым Годом!</h1>
