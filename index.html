@@ -1,47 +1,90 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=414, user-scalable=No">
-    <title>Новый Год</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>Новый Год - AR Просмотр</title>
 
+    <!-- Библиотеки -->
     <script src="JS_library/aframe.min.js"></script>
     <script src="JS_library/aframe-extras.min.js"></script>
     <script src="JS_library/aframe-ar.js"></script>
-    <script src="script.js"></script>
-    
-    <link rel="stylesheet" href="styles.css">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Pacifico&display=swap" rel="stylesheet">
-    
 
+    <!-- GUI для управления -->
+    <script src="https://unpkg.com/aframe-gui@1.1.2/build/aframe-gui.min.js"></script>
+
+    <!-- Стили -->
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Pacifico&display=swap" rel="stylesheet">
+
+    <!-- Наш скрипт -->
+    <script src="script.js"></script>
 </head>
-<body class="body">
-    <a-scene
-    embedded
-    arjs="sourceType: webcam; debugUIenabled: False; detectionMode: mono_and_matrix; matrixCodeType: 3x3;"
-    vr-mode-UI="disabled"
-    renderer="antialias: true; alpha: false; precision: medium;"
-    screenshot="width: 1920; height: 1080">
+
+<body>
+    <!-- AR Сцена -->
+    <a-scene id="arScene" vr-mode-ui="enabled: false"
+        arjs="sourceType: webcam; debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 3x3;"
+        renderer="antialias: true; alpha: false; precision: medium;" embedded gui-interactable>
+
+        <!-- 3D Модель -->
+        <a-entity id="arModel" gltf-model="#busModel" scale="0.1 0.1 0.1" position="0 0 -2" rotation="0 0 0"
+            class="clickable" gesture-handler="minScale: 0.05; maxScale: 0.5">
+        </a-entity>
+
+        <!-- Камера -->
+        <a-entity camera look-controls="enabled: false"></a-entity>
+
+        <!-- UI элементы в сцене -->
+        <a-entity id="arUI" position="0 -1 -2">
+            <!-- Кнопка вращения -->
+            <a-ring id="rotateRing" color="#FF3366" opacity="0.3" radius-inner="0.4" radius-outer="0.5"
+                rotation="90 0 0" class="clickable">
+            </a-ring>
+
+            <!-- Кнопка перемещения -->
+            <a-ring id="moveRing" color="#3366FF" opacity="0.3" radius-inner="0.6" radius-outer="0.7" rotation="90 0 0"
+                class="clickable">
+            </a-ring>
+        </a-entity>
+
+        <!-- Маркер для размещения (только для AR.js) -->
+        <a-marker id="placementMarker" preset="hiro" visible="false">
+            <a-box position="0 0.5 0" material="color: green; opacity: 0.5" scale="0.2 0.2 0.2"></a-box>
+        </a-marker>
+
+        <!-- Ассеты -->
         <a-assets>
-            <a-asset-item
-                id="bus"
-                scr="models/новогодний автобус V2.glb">
-            </a-asset-item>
+            <a-asset-item id="busModel" src="models/новогодний автобус V2.glb"></a-asset-item>
         </a-assets>
-            <a-entity
-                id="SceneCamera"
-                gltf-model="models/новогодний автобус V2.glb"
-                scale="0.1 0.1 0.1" position="0 5 0" rotation="0 0 0">
-            </a-entity>
-        <a-entity camera></a-entity camera>
     </a-scene>
+
+    <!-- Интерфейс -->
     <header class="header">
         <h1 id="title">С Новым Годом!</h1>
     </header>
-    <button id="ModelButton">Выбрать модель</button>
-    <button id="ShotButton"></button>
 
+    <div class="controls">
+        <button id="ModelButton">Выбрать модель</button>
+        <button id="PlaceButton">📍 Разместить</button>
+        <button id="ResetButton">🔄 Сбросить</button>
+        <button id="ShotButton">📸 Фото</button>
+    </div>
+
+    <!-- Модальное окно для инструкций -->
+    <div id="instructions" class="modal">
+        <div class="modal-content">
+            <h3>📱 Управление AR</h3>
+            <p>• <strong>Вращение:</strong> Двигайте палец по красному кольцу</p>
+            <p>• <strong>Перемещение:</strong> Двигайте палец по синему кольцу</p>
+            <p>• <strong>Масштаб:</strong> Два пальца - сведение/разведение</p>
+            <p>• <strong>Фото:</strong> Нажмите кнопку "📸 Фото"</p>
+            <button id="closeInstructions">Понятно</button>
+        </div>
+    </div>
 </body>
+
 </html>
