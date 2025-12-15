@@ -13,15 +13,14 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Pacifico&display=swap" rel="stylesheet">
-    <script src="script.js" defer></script>
+    <script src="script.js"></script>
+
 </head>
 <body class="body">
     <a-scene
-            screenshot-capture 
             embedded
             arjs="sourceType: webcam; debugUIenabled: False; detectionMode: mono_and_matrix; matrixCodeType: 3x3;"
-            vr-mode-UI="disabled"
-            renderer="antialias: true; alpha: false; precision: medium;">
+            vr-mode-UI="disabled">
         <a-assets>
             <a-asset-item
                 id="bus"
@@ -33,7 +32,7 @@
                 gltf-model="models/новогодний автобус V2.glb"
                 scale="0.1 0.1 0.1" position="0 5 0" rotation="0 0 0">
             </a-entity>
-        <a-entity camera></a-entity camera>
+        <a-entity-camera></a-entity-camera>
     </a-scene>
     <header class="header">
         <h1 id="title">С Новым Годом!</h1>
