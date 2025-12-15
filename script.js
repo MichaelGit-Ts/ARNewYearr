@@ -1,380 +1,271 @@
+// Основные переменные
+let scene, model, camera;
+let isModelPlaced = false;
+let isRotating = false;
+let isMoving = false;
+let currentMode = 'none'; // 'rotate', 'move', 'none'
+
+// Инициализация при загрузке
 document.addEventListener('DOMContentLoaded', function () {
-    const scene = document.querySelector('#arScene');
-    const model = document.querySelector('#arModel');
-    const placeBtn = document.querySelector('#PlaceButton');
-    const resetBtn = document.querySelector('#ResetButton');
-    const shotBtn = document.querySelector('#ShotButton');
-    const rotateRing = document.querySelector('#rotateRing');
-    const moveRing = document.querySelector('#moveRing');
-    const instructions = document.querySelector('#instructions');
+    // Получаем элементы
+    scene = document.querySelector('#arScene');
+    model = document.querySelector('#model') || document.querySelector('#fallbackModel');
 
-    // Состояние приложения
-    let isModelPlaced = false;
-    let isRotating = false;
-    let isMoving = false;
-    let lastTouch = { x: 0, y: 0 };
-    let modelScale = 0.1;
+    // Настройка кнопок
+    const placeBtn = document.getElementById('PlaceButton');
+    const rotateBtn = document.getElementById('RotateButton');
+    const moveBtn = document.getElementById('MoveButton');
+    const shotBtn = document.getElementById('ShotButton');
 
-    // 1. Инициализация AR
-    function initAR() {
-        console.log('Инициализация AR...');
+    // 1. Инициализация AR сцены
+    scene.addEventListener('loaded', function () {
+        console.log('AR сцена загружена');
+        showMessage('Наведите камеру на маркер Hiro или нажмите "Разместить"');
 
-        // Проверяем поддержку AR
-        checkARSupport();
+        // Проверяем, загрузилась ли модель
+        setTimeout(checkModelLoad, 2000);
+    });
 
-        // Скрываем UI элементы пока модель не размещена
-        rotateRing.setAttribute('visible', 'false');
-        moveRing.setAttribute('visible', 'false');
-
-        // Показываем инструкции при первом запуске
-        if (!localStorage.getItem('arInstructionsShown')) {
-            instructions.style.display = 'flex';
-        }
-    }
-
-    // 2. Проверка поддержки AR
-    function checkARSupport() {
-        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-        const isAndroid = /Android/.test(navigator.userAgent);
-
-        if (isIOS) {
-            // iOS 12+ с AR.js
-            console.log('iOS устройство - используем AR.js');
-            setupARJS();
-        } else if (isAndroid) {
-            // Android с WebXR или AR.js
-            if ('xr' in navigator) {
-                console.log('Android с WebXR поддержкой');
-                setupWebXR();
-            } else {
-                console.log('Android без WebXR - используем AR.js');
-                setupARJS();
-            }
+    // 2. Проверка загрузки модели
+    function checkModelLoad() {
+        const modelEl = document.querySelector('[gltf-model]');
+        if (modelEl && modelEl.components['gltf-model'] && modelEl.components['gltf-model'].model) {
+            console.log('3D модель загружена');
         } else {
-            // Десктоп - показываем 3D без AR
-            console.log('Десктоп - 3D режим');
-            setup3DOnly();
+            console.warn('Модель не загрузилась. Проверьте путь:', model.getAttribute('gltf-model'));
+            showMessage('Модель не загрузилась. Проверьте консоль браузера');
         }
     }
 
-    // 3. Настройка AR.js (iOS и старые Android)
-    function setupARJS() {
-        const marker = document.querySelector('#placementMarker');
-
-        placeBtn.addEventListener('click', function () {
-            if (!isModelPlaced) {
-                // Размещаем модель на маркере
-                marker.setAttribute('visible', 'true');
-                model.setAttribute('position', '0 0.5 0');
-
-                // Показываем UI для управления
-                rotateRing.setAttribute('visible', 'true');
-                moveRing.setAttribute('visible', 'true');
-
-                isModelPlaced = true;
-                placeBtn.textContent = '🔄 Переместить';
+    // 3. Размещение модели
+    placeBtn.addEventListener('click', function () {
+        if (!isModelPlaced) {
+            // Вариант A: Используем маркер
+            const marker = document.querySelector('#marker');
+            if (marker && marker.object3D.visible) {
+                // Модель уже на маркере
+                model.setAttribute('visible', 'true');
+                showMessage('Модель размещена на маркере!');
             }
-        });
+            // Вариант B: Размещаем перед камерой
+            else {
+                const fallbackModel = document.querySelector('#fallbackModel');
+                if (fallbackModel) {
+                    fallbackModel.setAttribute('visible', 'true');
+                    fallbackModel.setAttribute('position', '0 0 -2');
+                    model = fallbackModel;
+                    showMessage('Модель размещена перед камерой');
+                }
+            }
 
-        // Следим за маркером
-        marker.addEventListener('markerFound', function () {
-            console.log('Маркер найден!');
-        });
+            isModelPlaced = true;
+            placeBtn.textContent = '✓ Размещено';
+            placeBtn.style.background = '#00cc66';
+        }
+    });
 
-        marker.addEventListener('markerLost', function () {
-            console.log('Маркер потерян');
-        });
-    }
+    // 4. Режим вращения
+    rotateBtn.addEventListener('click', function () {
+        if (!isModelPlaced) {
+            showMessage('Сначала разместите модель!');
+            return;
+        }
 
-    // 4. Настройка жестов (аналог Quick Look)
-    function setupGestures() {
-        // Вращение модели
-        rotateRing.addEventListener('mousedown', startRotate);
-        rotateRing.addEventListener('touchstart', startRotate);
+        currentMode = currentMode === 'rotate' ? 'none' : 'rotate';
+        isRotating = currentMode === 'rotate';
+        isMoving = false;
 
-        // Перемещение модели
-        moveRing.addEventListener('mousedown', startMove);
-        moveRing.addEventListener('touchstart', startMove);
+        rotateBtn.style.background = isRotating ? '#ff5500' : '#ff9900';
+        moveBtn.style.background = '#00cc66';
 
-        // Масштабирование (pinch gesture)
-        scene.addEventListener('touchstart', handleTouchStart);
-        scene.addEventListener('touchmove', handleTouchMove);
+        showMessage(isRotating ? 'Режим вращения: двигайте палец по экрану' : 'Режим выключен');
+    });
 
-        // Глобальные события
-        window.addEventListener('mousemove', handleMouseMove);
-        window.addEventListener('mouseup', stopInteractions);
-        window.addEventListener('touchmove', handleTouchMove);
-        window.addEventListener('touchend', stopInteractions);
-    }
+    // 5. Режим перемещения
+    moveBtn.addEventListener('click', function () {
+        if (!isModelPlaced) {
+            showMessage('Сначала разместите модель!');
+            return;
+        }
 
-    function startRotate(event) {
-        event.preventDefault();
-        isRotating = true;
-        lastTouch = getEventPosition(event);
-    }
+        currentMode = currentMode === 'move' ? 'none' : 'move';
+        isMoving = currentMode === 'move';
+        isRotating = false;
 
-    function startMove(event) {
-        event.preventDefault();
-        isMoving = true;
-        lastTouch = getEventPosition(event);
-    }
+        moveBtn.style.background = isMoving ? '#009944' : '#00cc66';
+        rotateBtn.style.background = '#ff9900';
 
-    function handleMouseMove(event) {
+        showMessage(isMoving ? 'Режим перемещения: двигайте палец по экрану' : 'Режим выключен');
+    });
+
+    // 6. Обработка касаний для управления
+    let lastTouchX = 0;
+    let lastTouchY = 0;
+
+    scene.addEventListener('touchstart', function (e) {
         if (!isModelPlaced) return;
 
-        const currentPos = { x: event.clientX, y: event.clientY };
+        const touch = e.touches[0];
+        lastTouchX = touch.clientX;
+        lastTouchY = touch.clientY;
+
+        e.preventDefault();
+    });
+
+    scene.addEventListener('touchmove', function (e) {
+        if (!isModelPlaced || (!isRotating && !isMoving)) return;
+
+        const touch = e.touches[0];
+        const deltaX = touch.clientX - lastTouchX;
+        const deltaY = touch.clientY - lastTouchY;
 
         if (isRotating) {
-            // Вращение вокруг оси Y
-            const deltaX = currentPos.x - lastTouch.x;
+            // Вращение модели
             const rotation = model.getAttribute('rotation');
             model.setAttribute('rotation', {
-                x: rotation.x,
+                x: rotation.x + deltaY * 0.5,
                 y: rotation.y + deltaX * 0.5,
                 z: rotation.z
             });
         }
-
-        if (isMoving) {
-            // Перемещение в плоскости
-            const deltaX = (currentPos.x - lastTouch.x) * 0.01;
-            const deltaY = (currentPos.y - lastTouch.y) * -0.01;
+        else if (isMoving) {
+            // Перемещение модели
             const position = model.getAttribute('position');
             model.setAttribute('position', {
-                x: position.x + deltaX,
-                y: position.y + deltaY,
-                z: position.z
-            });
-
-            // Перемещаем UI вместе с моделью
-            const ui = document.querySelector('#arUI');
-            ui.setAttribute('position', {
-                x: position.x + deltaX,
-                y: -1,
+                x: position.x + deltaX * 0.01,
+                y: position.y - deltaY * 0.01,
                 z: position.z
             });
         }
 
-        lastTouch = currentPos;
-    }
+        lastTouchX = touch.clientX;
+        lastTouchY = touch.clientY;
 
-    let initialDistance = null;
+        e.preventDefault();
+    });
 
-    function handleTouchStart(event) {
-        if (event.touches.length === 2) {
-            // Начало pinch жеста
-            const touch1 = event.touches[0];
-            const touch2 = event.touches[1];
-            initialDistance = Math.hypot(
-                touch2.clientX - touch1.clientX,
-                touch2.clientY - touch1.clientY
-            );
-        }
-    }
-
-    function handleTouchMove(event) {
-        if (event.touches.length === 2 && isModelPlaced) {
-            // Масштабирование pinch жестом
-            const touch1 = event.touches[0];
-            const touch2 = event.touches[1];
-            const currentDistance = Math.hypot(
-                touch2.clientX - touch1.clientX,
-                touch2.clientY - touch1.clientY
-            );
-
-            if (initialDistance !== null) {
-                const scaleFactor = currentDistance / initialDistance;
-                modelScale = Math.max(0.05, Math.min(0.5, modelScale * scaleFactor));
-                model.setAttribute('scale', `${modelScale} ${modelScale} ${modelScale}`);
-                initialDistance = currentDistance;
-            }
-        } else {
-            // Обработка одиночного касания
-            handleMouseMove(event.touches[0]);
-        }
-    }
-
-    function stopInteractions() {
-        isRotating = false;
-        isMoving = false;
-        initialDistance = null;
-    }
-
-    function getEventPosition(event) {
-        if (event.touches && event.touches.length > 0) {
-            return { x: event.touches[0].clientX, y: event.touches[0].clientY };
-        }
-        return { x: event.clientX, y: event.clientY };
-    }
-
-    // 5. Функция фото (кросс-платформенная)
-    shotBtn.addEventListener('click', async function () {
+    // 7. Скриншот (РАБОЧИЙ метод)
+    shotBtn.addEventListener('click', function () {
         if (!isModelPlaced) {
-            alert('Сначала разместите модель!');
+            showMessage('Сначала разместите модель!');
             return;
         }
 
-        try {
-            // Способ 1: WebXR screenshot если доступно
-            if (navigator.xr && scene.renderer) {
-                const xrSession = scene.renderer.xr.getSession();
-                if (xrSession) {
-                    const canvas = await xrSession.end();
-                    saveCanvasAsImage(canvas);
-                    return;
-                }
-            }
+        showMessage('Создаем фото...');
 
-            // Способ 2: Canvas рендерера Three.js
-            if (scene.renderer && scene.renderer.domElement) {
-                const canvas = scene.renderer.domElement;
-                if (canvas.width > 100) {
-                    saveCanvasAsImage(canvas);
-                    return;
-                }
-            }
-
-            // Способ 3: Ручной рендер
-            manualScreenshot();
-
-        } catch (error) {
-            console.error('Ошибка фото:', error);
-            alert('Используйте системный скриншот:\niOS: Кнопка питания + Громкость вверх\nAndroid: Кнопка питания + Громкость вниз');
-        }
+        // Метод 1: Захват через html2canvas (надежнее)
+        captureScreenshotHTML2Canvas();
     });
 
-    function saveCanvasAsImage(canvas) {
-        // Создаем новый canvas с белым фоном
+    function captureScreenshotHTML2Canvas() {
+        // Находим ВСЕ элементы canvas на странице
+        const canvases = document.querySelectorAll('canvas');
+
+        if (canvases.length === 0) {
+            showMessage('Не найден canvas для захвата');
+            return;
+        }
+
+        // Берем самый большой canvas (скорее всего это AR сцена)
+        let targetCanvas = null;
+        let maxArea = 0;
+
+        canvases.forEach(canvas => {
+            const area = canvas.width * canvas.height;
+            if (area > maxArea && canvas.width > 100 && canvas.height > 100) {
+                maxArea = area;
+                targetCanvas = canvas;
+            }
+        });
+
+        if (!targetCanvas) {
+            targetCanvas = canvases[0];
+        }
+
+        console.log('Используем canvas:', targetCanvas.width, 'x', targetCanvas.height);
+
+        // Создаем новый canvas для обработки
         const finalCanvas = document.createElement('canvas');
-        finalCanvas.width = canvas.width;
-        finalCanvas.height = canvas.height;
+        finalCanvas.width = targetCanvas.width;
+        finalCanvas.height = targetCanvas.height;
         const ctx = finalCanvas.getContext('2d');
 
-        // Белый фон
-        ctx.fillStyle = '#FFFFFF';
+        // Заливаем черным фоном (так лучше видно 3D модель)
+        ctx.fillStyle = '#000000';
         ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
 
-        // Копируем AR сцену
-        ctx.drawImage(canvas, 0, 0);
-
-        // Добавляем водяной знак
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-        ctx.font = '20px Pacifico';
-        ctx.fillText('🎄 С Новым Годом!', 20, finalCanvas.height - 30);
+        // Копируем содержимое
+        ctx.drawImage(targetCanvas, 0, 0);
 
         // Сохраняем
-        const link = document.createElement('a');
-        link.download = `AR_НовыйГод_${Date.now()}.png`;
-        link.href = finalCanvas.toDataURL('image/png');
-        link.click();
-
-        // Уведомление
-        showNotification('Фото сохранено!');
+        saveCanvasImage(finalCanvas);
     }
 
-    function manualScreenshot() {
-        // Альтернативный метод для сложных случаев
-        const tempScene = document.createElement('a-scene');
-        tempScene.setAttribute('embedded', '');
-        tempScene.innerHTML = `
-            <a-entity camera="active: true" position="0 1.6 0"></a-entity>
-            <a-entity light="type: ambient; color: #FFF; intensity: 0.8"></a-entity>
-            <a-entity light="type: directional; color: #FFF; intensity: 0.5" position="-1 2 1"></a-entity>
-            <a-entity gltf-model="#busModel" scale="0.1 0.1 0.1" rotation="0 45 0"></a-entity>
-        `;
+    function saveCanvasImage(canvas) {
+        // Конвертируем в Data URL
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
 
-        document.body.appendChild(tempScene);
+        // Создаем временную ссылку
+        const link = document.createElement('a');
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        link.download = `AR_НовыйГод_${timestamp}.jpg`;
+        link.href = dataUrl;
+        link.style.display = 'none';
 
+        // Добавляем и кликаем
+        document.body.appendChild(link);
+        link.click();
+
+        // Удаляем через секунду
         setTimeout(() => {
-            const canvas = tempScene.canvas;
-            saveCanvasAsImage(canvas);
-            document.body.removeChild(tempScene);
+            document.body.removeChild(link);
+            showInstructions();
         }, 1000);
     }
 
-    // 6. Вспомогательные функции
-    resetBtn.addEventListener('click', function () {
-        model.setAttribute('position', '0 0 -2');
-        model.setAttribute('rotation', '0 0 0');
-        model.setAttribute('scale', '0.1 0.1 0.1');
-        modelScale = 0.1;
+    function showInstructions() {
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+        const isAndroid = /Android/.test(navigator.userAgent);
 
-        const ui = document.querySelector('#arUI');
-        ui.setAttribute('position', '0 -1 -2');
-
-        showNotification('Модель сброшена');
-    });
-
-    function showNotification(message) {
-        const notification = document.createElement('div');
-        notification.textContent = message;
-        notification.style.cssText = `
-            position: fixed;
-            top: 100px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(0, 0, 0, 0.8);
-            color: white;
-            padding: 15px 30px;
-            border-radius: 25px;
-            z-index: 10000;
-            font-family: Pacifico, cursive;
-            font-size: 18px;
-        `;
-        document.body.appendChild(notification);
-        setTimeout(() => notification.remove(), 2000);
+        if (isIOS) {
+            showMessage('Фото создано! Нажмите на миниатюру вверху экрана → "Поделиться" → "Сохранить в Фото"');
+        } else if (isAndroid) {
+            showMessage('Фото сохранено в "Загрузки"!');
+        } else {
+            showMessage('Скриншот сохранен в папку загрузок!');
+        }
     }
 
-    // Закрытие инструкций
-    document.querySelector('#closeInstructions').addEventListener('click', function () {
-        instructions.style.display = 'none';
-        localStorage.setItem('arInstructionsShown', 'true');
-    });
+    // 8. Вспомогательные функции
+    function showMessage(text, duration = 3000) {
+        const messageBox = document.getElementById('messageBox');
+        messageBox.textContent = text;
+        messageBox.style.display = 'block';
 
-    // 7. Инициализация
-    setTimeout(initAR, 1000);
-    setTimeout(setupGestures, 1500);
+        setTimeout(() => {
+            messageBox.style.display = 'none';
+        }, duration);
+    }
 
-    // Компонент для жестов A-Frame
-    AFRAME.registerComponent('gesture-handler', {
-        schema: {
-            minScale: { type: 'number', default: 0.05 },
-            maxScale: { type: 'number', default: 0.5 }
-        },
-        init: function () {
-            this.scaleFactor = 1;
-            this.initialDistance = 0;
+    // 9. Отладка - консоль информации
+    console.log('=== AR Debug Info ===');
+    console.log('User Agent:', navigator.userAgent);
+    console.log('Is iOS:', /iPad|iPhone|iPod/.test(navigator.userAgent));
+    console.log('Is Android:', /Android/.test(navigator.userAgent));
 
-            this.el.addEventListener('touchstart', this.onTouchStart.bind(this));
-            this.el.addEventListener('touchmove', this.onTouchMove.bind(this));
-        },
-        onTouchStart: function (evt) {
-            if (evt.touches.length === 2) {
-                this.initialDistance = this.getDistance(evt.touches[0], evt.touches[1]);
-            }
-        },
-        onTouchMove: function (evt) {
-            if (evt.touches.length === 2) {
-                const currentDistance = this.getDistance(evt.touches[0], evt.touches[1]);
-                const scale = currentDistance / this.initialDistance;
+    // 10. Автоматическая проверка через 5 секунд
+    setTimeout(() => {
+        const video = document.querySelector('video');
+        const canvases = document.querySelectorAll('canvas');
 
-                this.scaleFactor = Math.max(
-                    this.data.minScale,
-                    Math.min(this.data.maxScale, scale)
-                );
+        console.log('Видео элементы:', video ? 'Да' : 'Нет');
+        console.log('Canvas элементы:', canvases.length);
 
-                this.el.setAttribute('scale', {
-                    x: this.scaleFactor * 0.1,
-                    y: this.scaleFactor * 0.1,
-                    z: this.scaleFactor * 0.1
-                });
-            }
-        },
-        getDistance: function (touch1, touch2) {
-            return Math.hypot(
-                touch2.clientX - touch1.clientX,
-                touch2.clientY - touch1.clientY
-            );
+        if (video && video.videoWidth > 0) {
+            console.log('Камера работает:', video.videoWidth, 'x', video.videoHeight);
+            showMessage('Камера активирована!');
+        } else {
+            showMessage('Проблема с камерой. Разрешите доступ к камере.');
         }
-    });
+    }, 5000);
 });
