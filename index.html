@@ -9,7 +9,7 @@
     <script src="JS_library/aframe-extras.min.js"></script>
     <script src="JS_library/aframe-ar.js"></script>
     <script src="script.js"></script>
-
+    
     <link rel="stylesheet" href="styles.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -19,9 +19,11 @@
 </head>
 <body class="body">
     <a-scene
-            embedded
-            arjs="sourceType: webcam; debugUIenabled: False; detectionMode: mono_and_matrix; matrixCodeType: 3x3;"
-            vr-mode-UI="disabled">
+    embedded
+    arjs="sourceType: webcam; debugUIenabled: False; detectionMode: mono_and_matrix; matrixCodeType: 3x3;"
+    vr-mode-UI="disabled"
+    renderer="antialias: true; alpha: false; precision: medium;"
+    screenshot="width: 1920; height: 1080">
         <a-assets>
             <a-asset-item
                 id="bus"
@@ -33,42 +35,13 @@
                 gltf-model="models/новогодний автобус V2.glb"
                 scale="0.1 0.1 0.1" position="0 5 0" rotation="0 0 0">
             </a-entity>
-        <a-entity-camera></a-entity-camera>
+        <a-entity camera></a-entity camera>
     </a-scene>
     <header class="header">
         <h1 id="title">С Новым Годом!</h1>
     </header>
     <button id="ModelButton">Выбрать модель</button>
     <button id="ShotButton"></button>
-    <!-- Добавьте этот canvas для скриншотов -->
-    <canvas id="screenshotCanvas" style="display:none;"></canvas>
-    
-    <!-- Добавьте эту кнопку для теста -->
-    <button id="testBtn" style="position:fixed; top:10px; right:10px; z-index:10000; padding:10px;">
-        Тест Canvas
-    </button>
-    
-    <script>
-        // Тестовая функция
-        document.getElementById('testBtn')?.addEventListener('click', function () {
-            const video = document.querySelector('video');
-            const canvases = document.querySelectorAll('canvas');
-
-            alert(`Видео: ${video ? 'Да' : 'Нет'}\nCanvas: ${canvases.length}`);
-
-            // Пробуем сохранить каждый canvas
-            canvases.forEach((canvas, i) => {
-                if (canvas.width > 100) {
-                    const link = document.createElement('a');
-                    link.download = `test_canvas_${i}.jpg`;
-                    link.href = canvas.toDataURL('image/jpeg');
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                }
-            });
-        });
-    </script>
 
 </body>
 </html>
