@@ -1,85 +1,100 @@
-// Функция для добавления уведомления на экран
-function showMessage(text) {
-    const existingMsg = document.getElementById('userMessage');
-    if (existingMsg) existingMsg.remove();
-
-    const msg = document.createElement('div');
-    msg.id = 'userMessage';
-    msg.textContent = text;
-    document.body.appendChild(msg);
-    setTimeout(() => msg.remove(), 3000);
-}
-
-// Основная функция для создания и сохранения скриншота
 document.addEventListener('DOMContentLoaded', function () {
-    const shotButton = document.getElementById('ShotButton');
+    const ShotButton = document.getElementById('ShotButton');
+    const sceneEl = document.querySelector('a-scene');
 
-    // Настройка кнопки, если она пустая
-    if (shotButton) {
+    if (!sceneEl) {
+        console.error('A-Frame сцена не найдена!');
+        return;
     }
 
-    // Обработчик нажатия на кнопку
-    shotButton.addEventListener('click', function () {
-        // 1. Пытаемся найти основной canvas AR-сцены
-        const sceneCanvas = document.querySelector('a-scene').canvas;
-        let targetCanvas = sceneCanvas;
+    // Ждем полной загрузки сцены
+    sceneEl.addEventListener('loaded', function () {
+        console.log('AR сцена загружена');
+        setupScreenShotButton();
+    });
 
-        // Если canvas сцены не найден, ищем любой другой подходящий
-        if (!targetCanvas) {
-            const allCanvases = document.querySelectorAll('canvas');
-            for (let canvas of allCanvases) {
-                if (canvas.width > 200 && canvas.height > 200) {
-                    targetCanvas = canvas;
-                    break;
+    function setupScreenShotButton() {
+        if (!ShotButton) return;
+
+        ShotButton.addEventListener('click', captureARScreenshot);
+    }
+
+    function captureARScreenshot() {
+        try {
+            // Находим все canvas элементы
+            const canvases = document.querySelectorAll('canvas');
+            let videoCanvas = null;
+            let sceneCanvas = null;
+
+            // Ищем canvas с видео (самый большой и не пустой)
+            canvases.forEach(canvas => {
+                if (canvas.width > 300 && canvas.height > 300) {
+                    if (!videoCanvas) {
+                        videoCanvas = canvas;
+                    }
+                    // Canvas A-Frame сцены
+                    if (canvas === sceneEl.canvas) {
+                        sceneCanvas = canvas;
+                    }
                 }
+            });
+
+            // Если не нашли видео canvas, используем первый подходящий
+            if (!videoCanvas) {
+                videoCanvas = sceneCanvas || canvases[0];
             }
+
+            if (!videoCanvas) {
+                throw new Error('Не найден canvas с AR-изображением');
+            }
+
+            // Создаем финальный canvas
+            const finalCanvas = document.createElement('canvas');
+            finalCanvas.width = videoCanvas.width;
+            finalCanvas.height = videoCanvas.height;
+            const ctx = finalCanvas.getContext('2d');
+
+            // Копируем видео с камеры
+            ctx.drawImage(videoCanvas, 0, 0);
+
+            // Добавляем 3D-модель поверх видео (если есть отдельный canvas)
+            if (sceneCanvas && sceneCanvas !== videoCanvas) {
+                ctx.drawImage(sceneCanvas, 0, 0);
+            }
+
+            // Создаем Data URL
+            const dataUrl = finalCanvas.toDataURL('image/jpeg', 0.9);
+            downloadImage(dataUrl);
+
+        } catch (error) {
+            console.error('Ошибка при создании скриншота:', error);
+            alert('Ошибка при создании скриншота: ' + error.message);
         }
+    }
 
-        if (!targetCanvas) {
-            showMessage('Не удалось найти изображение AR-сцены');
-            return;
-        }
+    function downloadImage(dataUrl) {
+        const link = document.createElement('a');
+        const timestamp = new Date().toLocaleString('ru-RU')
+            .replace(/[/:]/g, '-')
+            .replace(', ', '_');
 
-        // 2. Создаем временный canvas и копируем данные
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = targetCanvas.width;
-        tempCanvas.height = targetCanvas.height;
-        const ctx = tempCanvas.getContext('2d');
+        link.download = `AR_Новый_Год_${timestamp}.jpg`;
+        link.href = dataUrl;
 
-        // Заливаем белым фоном на случай прозрачности WebGL
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-        ctx.drawImage(targetCanvas, 0, 0);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
 
-        // 3. Конвертируем в Data URL
-        const dataUrl = tempCanvas.toDataURL('image/png');
-
-        // 4. Создаем временную ссылку для скачивания
-        const downloadLink = document.createElement('a');
-        const timestamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-        downloadLink.download = `AR-НовыйГод-${timestamp}.png`;
-        downloadLink.href = dataUrl;
-
-        // 5. Инициируем скачивание
-        document.body.appendChild(downloadLink);
-        downloadLink.click();
-        document.body.removeChild(downloadLink);
-
-        // 6. Показываем инструкции для пользователя
+        // Инструкция для пользователя
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
         const isAndroid = /Android/.test(navigator.userAgent);
 
         if (isIOS) {
-            showMessage('Фото создано! Нажмите «Поделиться» → «Сохранить в Фото»');
+            alert('Фото готово! В открывшейся вкладке нажмите "Поделиться" → "Сохранить в Фото"');
         } else if (isAndroid) {
-            showMessage('Фото создано! Сохраните его из папки «Загрузки»');
+            alert('Фото сохранено в загрузки!');
         } else {
-            showMessage('Скриншот сохранен в загрузки!');
+            alert('Скриншот сохранен!');
         }
-
-        // 7. Виброотклик для мобильных устройств (если поддерживается)
-        if (navigator.vibrate) {
-            navigator.vibrate(50);
-        }
-    });
+    }
 });
