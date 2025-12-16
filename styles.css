@@ -330,3 +330,15 @@ a {
         min-height: 32px;
     }
 }
+
+
+#ResetButton {
+    background: #9c27b0;
+    color: #fff;
+}
+
+.controls button:active {
+    transform: scale(0.95);
+    opacity: 0.9;
+    transition: transform 0.1s, opacity 0.1s;
+}
