@@ -269,3 +269,326 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }, 5000);
 });
+// ===== КОМПОНЕНТ ДЛЯ МАСШТАБИРОВАНИЯ ДВУМЯ ПАЛЬЦАМИ =====
+
+// 1. Регистрируем компонент для жеста pinch-to-zoom
+AFRAME.registerComponent('pinch-scale', {
+    schema: {
+        min: { type: 'number', default: 0.05 },
+        max: { type: 'number', default: 0.5 },
+        sensitivity: { type: 'number', default: 0.001 }
+    },
+
+    init: function () {
+        this.initialDistance = null;
+        this.initialScale = this.el.getAttribute('scale') || { x: 0.1, y: 0.1, z: 0.1 };
+
+        // Слушаем события касания
+        this.el.sceneEl.addEventListener('touchstart', this.onTouchStart.bind(this));
+        this.el.sceneEl.addEventListener('touchmove', this.onTouchMove.bind(this));
+        this.el.sceneEl.addEventListener('touchend', this.onTouchEnd.bind(this));
+
+        console.log('Компонент pinch-scale инициализирован');
+    },
+
+    onTouchStart: function (event) {
+        // Если касаний два - начинаем жести масштабирования
+        if (event.touches.length === 2) {
+            // Проверяем, касаются ли оба пальца нашей модели или рядом с ней
+            const touch1 = event.touches[0];
+            const touch2 = event.touches[1];
+
+            this.initialDistance = this.getDistance(touch1, touch2);
+            this.initialScale = this.el.getAttribute('scale');
+
+            // Показываем подсказку
+            this.showPinchHint();
+
+            event.preventDefault();
+            return true;
+        }
+        return false;
+    },
+
+    onTouchMove: function (event) {
+        // Обрабатываем жест масштабирования только если два пальца
+        if (event.touches.length === 2 && this.initialDistance !== null) {
+            const touch1 = event.touches[0];
+            const touch2 = event.touches[1];
+            const currentDistance = this.getDistance(touch1, touch2);
+
+            // Вычисляем коэффициент масштабирования
+            const scaleFactor = currentDistance / this.initialDistance;
+
+            // Получаем текущий масштаб
+            const currentScale = this.initialScale || { x: 0.1, y: 0.1, z: 0.1 };
+            const newScale = {
+                x: currentScale.x * scaleFactor,
+                y: currentScale.y * scaleFactor,
+                z: currentScale.z * scaleFactor
+            };
+
+            // Ограничиваем масштаб
+            newScale.x = Math.max(this.data.min, Math.min(this.data.max, newScale.x));
+            newScale.y = Math.max(this.data.min, Math.min(this.data.max, newScale.y));
+            newScale.z = Math.max(this.data.min, Math.min(this.data.max, newScale.z));
+
+            // Применяем новый масштаб
+            this.el.setAttribute('scale', newScale);
+
+            event.preventDefault();
+            return true;
+        }
+        return false;
+    },
+
+    onTouchEnd: function (event) {
+        // Сбрасываем состояние при окончании жеста
+        if (event.touches.length < 2) {
+            this.initialDistance = null;
+            this.initialScale = null;
+        }
+    },
+
+    getDistance: function (touch1, touch2) {
+        const dx = touch2.clientX - touch1.clientX;
+        const dy = touch2.clientY - touch1.clientY;
+        return Math.sqrt(dx * dx + dy * dy);
+    },
+
+    showPinchHint: function () {
+        // Кратковременная подсказка о жесте масштабирования
+        const hint = document.createElement('div');
+        hint.innerHTML = '✌️ Используйте два пальца для масштабирования';
+        hint.style.cssText = `
+            position: fixed;
+            top: 30%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 15px;
+            z-index: 10001;
+            font-family: 'Pacifico', cursive;
+            font-size: 18px;
+            text-align: center;
+            animation: fadeInOut 3s ease;
+        `;
+
+        // Добавляем CSS анимацию
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes fadeInOut {
+                0% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+                20% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+                80% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+                100% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+            }
+        `;
+        document.head.appendChild(style);
+
+        document.body.appendChild(hint);
+        setTimeout(() => {
+            if (hint.parentNode) {
+                hint.remove();
+            }
+            if (style.parentNode) {
+                style.remove();
+            }
+        }, 3000);
+    }
+});
+
+// 2. Функция для добавления компонента к модели
+function addPinchZoomToModel() {
+    const model = document.querySelector('#model') || document.querySelector('#fallbackModel');
+
+    if (model) {
+        // Добавляем компонент pinch-scale к модели
+        model.setAttribute('pinch-scale', {
+            min: 0.03,   // Минимальный масштаб (30% от исходного)
+            max: 0.3,    // Максимальный масштаб (300% от исходного)
+            sensitivity: 0.0005
+        });
+
+        console.log('Добавлен компонент pinch-scale к модели');
+
+        // Показываем инструкцию один раз
+        if (!localStorage.getItem('pinchHintShown')) {
+            setTimeout(() => {
+                showMessage('✌️ Новый жест: двумя пальцами масштабируйте модель', 4000);
+                localStorage.setItem('pinchHintShown', 'true');
+            }, 2000);
+        }
+
+        return true;
+    }
+
+    return false;
+}
+
+// 3. Обновляем обработчики касаний для работы с масштабированием
+function updateTouchHandlersForPinch() {
+    const scene = document.querySelector('#arScene');
+
+    if (!scene) return;
+
+    // Перехватываем события касаний для обработки жеста масштабирования
+    scene.addEventListener('touchstart', function (e) {
+        // Если два пальца - не передаем событие дальше
+        if (e.touches.length === 2) {
+            // Жест масштабирования обрабатывается компонентом pinch-scale
+            return;
+        }
+    }, { passive: false });
+
+    scene.addEventListener('touchmove', function (e) {
+        // Если два пальца - предотвращаем прокрутку страницы
+        if (e.touches.length === 2) {
+            e.preventDefault();
+            return;
+        }
+    }, { passive: false });
+}
+
+// 4. Добавляем кнопку сброса масштаба (опционально)
+function addScaleResetButton() {
+    const controls = document.querySelector('.controls');
+
+    if (!controls) return;
+
+    // Создаем кнопку сброса масштаба
+    const resetScaleBtn = document.createElement('button');
+    resetScaleBtn.id = 'ResetScaleButton';
+    resetScaleBtn.innerHTML = '🔍 Сброс масштаба';
+    resetScaleBtn.title = 'Вернуть модель к исходному размеру';
+
+    // Добавляем стили
+    resetScaleBtn.style.cssText = `
+        background: #9c27b0;
+        color: #fff;
+        padding: clamp(10px, 2.5vh, 14px) clamp(15px, 3vw, 20px);
+        border: 0;
+        border-radius: 50px;
+        font-family: 'Pacifico', cursive;
+        font-size: clamp(12px, 3vw, 16px);
+        cursor: pointer;
+        min-width: max-content;
+        flex: 1;
+        max-width: 22vw;
+        white-space: nowrap;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    `;
+
+    // Обработчик клика
+    resetScaleBtn.addEventListener('click', function () {
+        const model = document.querySelector('#model') || document.querySelector('#fallbackModel');
+
+        if (model) {
+            // Сбрасываем масштаб к исходному
+            model.setAttribute('scale', '0.1 0.1 0.1');
+            showMessage('Масштаб сброшен к исходному размеру');
+
+            // Анимация кнопки
+            this.style.animation = 'buttonPulse 0.3s ease';
+            setTimeout(() => {
+                this.style.animation = '';
+            }, 300);
+        }
+    });
+
+    // Вставляем кнопку перед кнопкой фото
+    const shotBtn = document.getElementById('ShotButton');
+    if (shotBtn && shotBtn.parentNode) {
+        controls.insertBefore(resetScaleBtn, shotBtn);
+    } else {
+        controls.appendChild(resetScaleBtn);
+    }
+}
+
+// 5. Инициализация функции масштабирования
+function initPinchZoom() {
+    // Ждем загрузки модели
+    setTimeout(() => {
+        // Добавляем компонент pinch-scale к модели
+        const added = addPinchZoomToModel();
+
+        if (added) {
+            // Обновляем обработчики касаний
+            updateTouchHandlersForPinch();
+
+            // Добавляем кнопку сброса масштаба (опционально)
+            addScaleResetButton();
+
+            console.log('Функция масштабирования двумя пальцами активирована');
+        } else {
+            console.warn('Не удалось найти модель для добавления жеста масштабирования');
+
+            // Пробуем еще раз через 2 секунды
+            setTimeout(initPinchZoom, 2000);
+        }
+    }, 3000); // Ждем 3 секунды для полной загрузки сцены
+}
+
+// 6. Обновляем инструкции
+function updateInstructionsForPinch() {
+    // Обновляем текст в существующих сообщениях
+    const originalShowMessage = window.showMessage;
+
+    if (typeof originalShowMessage === 'function') {
+        window.showMessage = function (text, duration) {
+            // Добавляем подсказку про жест масштабирования в некоторые сообщения
+            if (text.includes('Режим вращения') || text.includes('Режим перемещения')) {
+                text += '\n✌️ Двумя пальцами - масштабирование';
+            }
+            return originalShowMessage.call(this, text, duration);
+        };
+    }
+
+    // Добавляем подсказку в начало приложения
+    setTimeout(() => {
+        showMessage('Управление модели:\n• 1 палец - вращение/перемещение\n• 2 пальца - масштабирование', 5000);
+    }, 5000);
+}
+
+// 7. Запускаем инициализацию при загрузке
+document.addEventListener('DOMContentLoaded', function () {
+    // Ждем полной загрузки A-Frame
+    if (typeof AFRAME !== 'undefined') {
+        // Инициализируем функцию масштабирования
+        setTimeout(initPinchZoom, 1000);
+
+        // Обновляем инструкции
+        setTimeout(updateInstructionsForPinch, 2000);
+    } else {
+        // Если A-Frame еще не загружен, ждем
+        const checkAFrame = setInterval(() => {
+            if (typeof AFRAME !== 'undefined') {
+                clearInterval(checkAFrame);
+                initPinchZoom();
+                updateInstructionsForPinch();
+            }
+        }, 500);
+    }
+});
+
+// 8. Добавляем глобальную функцию для отладки
+window.debugPinchZoom = function () {
+    const model = document.querySelector('#model') || document.querySelector('#fallbackModel');
+
+    if (model) {
+        const scale = model.getAttribute('scale');
+        console.log('Текущий масштаб модели:', scale);
+        console.log('Компонент pinch-scale:', model.components['pinch-scale']);
+
+        // Тестовое изменение масштаба
+        model.setAttribute('scale', {
+            x: scale.x * 1.2,
+            y: scale.y * 1.2,
+            z: scale.z * 1.2
+        });
+
+        showMessage('Тест масштабирования: +20%');
+    }
+};
