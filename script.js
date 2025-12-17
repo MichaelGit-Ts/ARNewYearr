@@ -434,114 +434,6 @@ document.addEventListener('DOMContentLoaded', function () {
     }, 3000);
 });
 
-// ===== КОМПОНЕНТ МАСШТАБИРОВАНИЯ =====
-
-function addPinchZoomComponent() {
-    console.log('🔄 Добавляем масштабирование...');
-
-    if (pinchScaleComponentAdded) {
-        console.log('✅ Масштабирование уже добавлено');
-        return;
-    }
-
-    // Ждем A-Frame
-    if (typeof AFRAME === 'undefined') {
-        setTimeout(addPinchZoomComponent, 1000);
-        return;
-    }
-
-    // Регистрируем компонент
-    if (!AFRAME.components['pinch-scale']) {
-        AFRAME.registerComponent('pinch-scale', {
-            schema: {
-                min: { default: 0.05 },
-                max: { default: 0.3 }
-            },
-
-            init: function () {
-                console.log('✅ Компонент масштабирования создан');
-
-                this.initialDistance = null;
-                this.initialScale = null;
-                this.isScaling = false;
-
-                this.handleTouchStart = this.handleTouchStart.bind(this);
-                this.handleTouchMove = this.handleTouchMove.bind(this);
-                this.handleTouchEnd = this.handleTouchEnd.bind(this);
-
-                this.el.sceneEl.addEventListener('touchstart', this.handleTouchStart);
-                this.el.sceneEl.addEventListener('touchmove', this.handleTouchMove, { passive: false });
-                this.el.sceneEl.addEventListener('touchend', this.handleTouchEnd);
-            },
-
-            handleTouchStart: function (event) {
-                if (event.touches.length === 2 && this.el.getAttribute('visible') === 'true') {
-                    this.isScaling = true;
-                    this.initialDistance = Math.sqrt(
-                        Math.pow(event.touches[1].clientX - event.touches[0].clientX, 2) +
-                        Math.pow(event.touches[1].clientY - event.touches[0].clientY, 2)
-                    );
-                    this.initialScale = this.el.getAttribute('scale');
-                    event.preventDefault();
-
-                    console.log('✌️ Начало масштабирования');
-
-                    if (!localStorage.getItem('pinchHintShown')) {
-                        showMessage('✌️ Используйте два пальца для масштабирования', 2000);
-                        localStorage.setItem('pinchHintShown', 'true');
-                    }
-                }
-            },
-
-            handleTouchMove: function (event) {
-                if (!this.isScaling || event.touches.length !== 2) return;
-
-                const currentDistance = Math.sqrt(
-                    Math.pow(event.touches[1].clientX - event.touches[0].clientX, 2) +
-                    Math.pow(event.touches[1].clientY - event.touches[0].clientY, 2)
-                );
-
-                if (this.initialDistance && this.initialScale) {
-                    const scaleFactor = currentDistance / this.initialDistance;
-                    const minScale = this.data.min;
-                    const maxScale = this.data.max;
-                    const clampedScale = Math.max(minScale, Math.min(maxScale, scaleFactor));
-
-                    const newScale = {
-                        x: this.initialScale.x * clampedScale,
-                        y: this.initialScale.y * clampedScale,
-                        z: this.initialScale.z * clampedScale
-                    };
-
-                    this.el.setAttribute('scale', newScale);
-                }
-
-                event.preventDefault();
-            },
-
-            handleTouchEnd: function () {
-                this.isScaling = false;
-                this.initialDistance = null;
-                this.initialScale = null;
-            }
-        });
-    }
-
-    // Добавляем компонент к активной модели
-    if (window.activeModel) {
-        window.activeModel.setAttribute('pinch-scale', {
-            min: 0.05,
-            max: 0.3
-        });
-
-        pinchScaleComponentAdded = true;
-        console.log('✅ Компонент масштабирования добавлен к модели');
-    } else {
-        console.warn('⚠️ Активная модель не найдена для добавления масштабирования');
-        setTimeout(addPinchZoomComponent, 1000);
-    }
-}
-
 // ===== ГЛОБАЛЬНЫЕ ФУНКЦИИ ДЛЯ ОТЛАДКИ =====
 
 window.debugModel = function () {
@@ -586,3 +478,340 @@ window.showModel = function () {
         showMessage('Модель показана', 2000);
     }
 };
+
+// ===== РАБОЧИЙ КОМПОНЕНТ МАСШТАБИРОВАНИЯ =====
+
+function setupPinchZoom() {
+    console.log('🔧 Настраиваем жест масштабирования...');
+
+    let initialDistance = 0;
+    let initialScale = { x: 0.1, y: 0.1, z: 0.1 };
+    let isPinching = false;
+    let currentActiveModel = null;
+
+    // Функция для расчета расстояния между двумя точками
+    function getDistance(touch1, touch2) {
+        const dx = touch2.clientX - touch1.clientX;
+        const dy = touch2.clientY - touch1.clientY;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    // Обработчик начала касания
+    function handleTouchStart(e) {
+        // Если касаются двумя пальцами и модель размещена
+        if (e.touches.length === 2) {
+            currentActiveModel = window.activeModel || getActiveModel();
+
+            if (currentActiveModel && currentActiveModel.getAttribute('visible') === 'true') {
+                isPinching = true;
+                initialDistance = getDistance(e.touches[0], e.touches[1]);
+                initialScale = currentActiveModel.getAttribute('scale');
+
+                // Предотвращаем прокрутку страницы и другие жесты
+                e.preventDefault();
+                e.stopPropagation();
+
+                // Показываем подсказку один раз
+                if (!localStorage.getItem('pinchHintShown')) {
+                    showMessage('✌️ Используйте два пальца для масштабирования', 2000);
+                    localStorage.setItem('pinchHintShown', 'true');
+                }
+
+                console.log('✌️ Начало жеста масштабирования');
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Обработчик движения пальцев
+    function handleTouchMove(e) {
+        if (!isPinching || e.touches.length !== 2 || !currentActiveModel) return;
+
+        const currentDistance = getDistance(e.touches[0], e.touches[1]);
+
+        if (initialDistance > 0) {
+            // Вычисляем коэффициент масштабирования
+            const scaleFactor = currentDistance / initialDistance;
+
+            // Ограничиваем масштаб (от 30% до 300%)
+            const minScale = 0.03;
+            const maxScale = 0.3;
+            const clampedScale = Math.max(minScale, Math.min(maxScale, scaleFactor));
+
+            // Применяем новый масштаб
+            const newScale = {
+                x: initialScale.x * clampedScale,
+                y: initialScale.y * clampedScale,
+                z: initialScale.z * clampedScale
+            };
+
+            currentActiveModel.setAttribute('scale', newScale);
+
+            // Обновляем начальные значения для плавности
+            initialDistance = currentDistance;
+            initialScale = newScale;
+
+            e.preventDefault();
+            e.stopPropagation();
+
+            console.log('🔍 Масштаб изменен:', newScale);
+            return true;
+        }
+        return false;
+    }
+
+    // Обработчик окончания касания
+    function handleTouchEnd(e) {
+        if (isPinching) {
+            isPinching = false;
+            initialDistance = 0;
+            console.log('✅ Жест масштабирования завершен');
+        }
+    }
+
+    // Добавляем обработчики событий
+    const scene = document.querySelector('#arScene');
+    if (scene) {
+        // Удаляем старые обработчики если есть
+        scene.removeEventListener('touchstart', handleTouchStart);
+        scene.removeEventListener('touchmove', handleTouchMove);
+        scene.removeEventListener('touchend', handleTouchEnd);
+
+        // Добавляем новые обработчики
+        scene.addEventListener('touchstart', handleTouchStart, { passive: false });
+        scene.addEventListener('touchmove', handleTouchMove, { passive: false });
+        scene.addEventListener('touchend', handleTouchEnd);
+
+        console.log('✅ Обработчики жеста масштабирования установлены');
+
+        // Добавляем также обработку для всего документа на случай если события не доходят до сцены
+        document.removeEventListener('touchstart', handleTouchStart);
+        document.removeEventListener('touchmove', handleTouchMove);
+        document.removeEventListener('touchend', handleTouchEnd);
+
+        document.addEventListener('touchstart', handleTouchStart, { passive: false });
+        document.addEventListener('touchmove', handleTouchMove, { passive: false });
+        document.addEventListener('touchend', handleTouchEnd);
+
+        console.log('✅ Обработчики жеста масштабирования установлены на документ');
+    }
+
+    // Возвращаем функции для управления
+    return {
+        enable: function () {
+            console.log('✅ Масштабирование включено');
+        },
+        disable: function () {
+            console.log('⏸️ Масштабирование отключено');
+        }
+    };
+}
+
+// Функция для получения активной модели
+function getActiveModel() {
+    const mainModel = document.querySelector('#mainModel');
+    const markerModel = document.querySelector('#markerModel');
+
+    if (mainModel && mainModel.getAttribute('visible') === 'true') {
+        return mainModel;
+    }
+    if (markerModel && markerModel.getAttribute('visible') === 'true') {
+        return markerModel;
+    }
+    return null;
+}
+
+// ===== ИНТЕГРАЦИЯ С СУЩЕСТВУЮЩИМ КОДОМ =====
+
+// Обновленная функция для включения всех жестов
+function enableAllGestures() {
+    console.log('🎮 Активируем все жесты управления...');
+
+    // Включить жесты вращения и перемещения
+    if (typeof enableGestures === 'function') {
+        enableGestures();
+    }
+
+    // Включить жест масштабирования
+    const pinchZoom = setupPinchZoom();
+    pinchZoom.enable();
+
+    console.log('✅ Все жесты управления активированы');
+
+    // Показываем инструкцию по управлению
+    setTimeout(() => {
+        showMessage('🎮 Управление:\n• 1 палец - вращение/перемещение\n• 2 пальца - масштабирование', 4000);
+    }, 1000);
+}
+
+// Обновляем функцию размещения модели для включения всех жестов
+document.addEventListener('DOMContentLoaded', function () {
+    const placeBtn = document.getElementById('PlaceButton');
+
+    if (placeBtn) {
+        // Сохраняем оригинальный обработчик
+        const originalClickHandler = placeBtn.onclick;
+
+        placeBtn.addEventListener('click', function (e) {
+            // Вызываем оригинальный обработчик
+            if (originalClickHandler) {
+                originalClickHandler.call(this, e);
+            }
+
+            // Даем время на размещение модели
+            setTimeout(() => {
+                // Проверяем, размещена ли модель
+                const model = getActiveModel();
+                if (model && model.getAttribute('visible') === 'true') {
+                    // Включаем все жесты управления
+                    setTimeout(() => {
+                        enableAllGestures();
+                    }, 300);
+                }
+            }, 500);
+        });
+    }
+});
+
+// ===== КОМАНДЫ ДЛЯ ТЕСТИРОВАНИЯ =====
+
+// Добавьте в консоль для тестирования:
+window.testPinchZoom = function () {
+    console.log('🔧 Тест жеста масштабирования');
+
+    const activeModel = getActiveModel();
+    if (!activeModel) {
+        console.log('❌ Активная модель не найдена');
+        showMessage('Сначала разместите модель!', 2000);
+        return;
+    }
+
+    const currentScale = activeModel.getAttribute('scale');
+    console.log('Текущий масштаб:', currentScale);
+
+    // Тестовое увеличение масштаба на 20%
+    const newScale = {
+        x: currentScale.x * 1.2,
+        y: currentScale.y * 1.2,
+        z: currentScale.z * 1.2
+    };
+
+    // Ограничиваем максимальный масштаб
+    const maxScale = 0.3;
+    const finalScale = {
+        x: Math.min(newScale.x, maxScale),
+        y: Math.min(newScale.y, maxScale),
+        z: Math.min(newScale.z, maxScale)
+    };
+
+    activeModel.setAttribute('scale', finalScale);
+    console.log('Новый масштаб:', finalScale);
+    showMessage('Тест: масштаб увеличен на 20%', 2000);
+};
+
+window.resetModelScale = function () {
+    const activeModel = getActiveModel();
+    if (activeModel) {
+        activeModel.setAttribute('scale', '0.1 0.1 0.1');
+        console.log('✅ Масштаб сброшен к исходному');
+        showMessage('Масштаб сброшен', 2000);
+    }
+};
+
+// ===== БЫСТРЫЙ ФИКС ДЛЯ ПРОВЕРКИ =====
+
+// Функция для быстрого теста масштабирования
+function quickPinchZoomFix() {
+    console.log('⚡ Быстрая настройка жеста масштабирования');
+
+    let initialPinchDistance = 0;
+    let initialPinchScale = null;
+    let isPinchingNow = false;
+
+    // Обработчики событий
+    function onTouchStart(e) {
+        if (e.touches.length === 2) {
+            const activeModel = getActiveModel();
+            if (activeModel && activeModel.getAttribute('visible') === 'true') {
+                initialPinchDistance = Math.hypot(
+                    e.touches[1].clientX - e.touches[0].clientX,
+                    e.touches[1].clientY - e.touches[0].clientY
+                );
+                initialPinchScale = activeModel.getAttribute('scale');
+                isPinchingNow = true;
+                e.preventDefault();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function onTouchMove(e) {
+        if (isPinchingNow && e.touches.length === 2) {
+            const currentDistance = Math.hypot(
+                e.touches[1].clientX - e.touches[0].clientX,
+                e.touches[1].clientY - e.touches[0].clientY
+            );
+
+            if (initialPinchDistance > 0 && initialPinchScale) {
+                const scaleFactor = currentDistance / initialPinchDistance;
+                const minScale = 0.03;
+                const maxScale = 0.3;
+                const clampedScale = Math.max(minScale, Math.min(maxScale, scaleFactor));
+
+                const newScale = {
+                    x: initialPinchScale.x * clampedScale,
+                    y: initialPinchScale.y * clampedScale,
+                    z: initialPinchScale.z * clampedScale
+                };
+
+                const activeModel = getActiveModel();
+                if (activeModel) {
+                    activeModel.setAttribute('scale', newScale);
+                }
+
+                e.preventDefault();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function onTouchEnd(e) {
+        isPinchingNow = false;
+    }
+
+    // Добавляем обработчики
+    document.addEventListener('touchstart', onTouchStart, { passive: false });
+    document.addEventListener('touchmove', onTouchMove, { passive: false });
+    document.addEventListener('touchend', onTouchEnd);
+
+    console.log('⚡ Быстрый фикс масштабирования активирован');
+    return true;
+}
+
+// Запускаем быстрый фикс при загрузке
+setTimeout(quickPinchZoomFix, 2000);
+
+// ===== ИНИЦИАЛИЗАЦИЯ ПРИ ЗАГРУЗКЕ =====
+
+// Автоматически активируем жесты, если модель уже размещена
+setTimeout(() => {
+    console.log('🔄 Проверяем состояние модели...');
+
+    const checkModel = setInterval(() => {
+        const model = getActiveModel();
+        if (model && model.getAttribute('visible') === 'true') {
+            clearInterval(checkModel);
+            console.log('✅ Модель уже размещена, включаем жесты');
+            enableAllGestures();
+        }
+    }, 1000);
+
+    // Останавливаем проверку через 10 секунд
+    setTimeout(() => clearInterval(checkModel), 10000);
+}, 3000);
+
+console.log('✅ Модуль жеста масштабирования загружен');
+console.log('📝 Доступные команды: window.testPinchZoom(), window.resetModelScale()');
