@@ -7,7 +7,7 @@
     <title>AR Quick Look</title>
     <script src="lib/aframe.min.js"></script>
     <script src="lib/aframe-extras.min.js"></script>
-    <script src="./lib/hammer.min.js"></script>
+    <script src="lib/hammer.min.js"></script>
     <script src="lib/aframe-ar.js"></script>
     <link rel="stylesheet" href="css/style.css">
     <style>
@@ -108,8 +108,12 @@
 
 <body>
     <!-- A-Frame Сцена БЕЗ AR.js -->
-    <a-scene embedded vr-mode-ui="enabled: false"
-        cursor="rayOrigin: mouse">
+    <a-scene 
+    embedded 
+    arjs="sourceType: webcam; debugUIEnabled: false;"
+    vr-mode-ui="enabled: false"
+    renderer="antialias: true; precision: high; preserveDrawingBuffer: true;"
+    data-aframe-scene>
         <!-- Камера -->
         <a-entity position="0 1.6 0">
             <a-entity raycaster="objects: .draggable" position="0 0 -1">
@@ -157,6 +161,11 @@
         <!-- Кнопка фотографии -->
         <div class="control-button" id="photo-btn">
             📷
+        </div>
+
+        <!-- Вставьте эту кнопку в UI контейнер (например, после кнопки фотографии) -->
+        <div class="control-button" id="switch-camera-btn" title="Переключить камеру">
+            🔄📱
         </div>
 
         <!-- Кнопка сброса -->
