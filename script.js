@@ -1,817 +1,418 @@
-// ===== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ И ФУНКЦИИ =====
-let scene, mainModel, markerModel, camera;
-let isModelPlaced = false;
-let isRotating = false;
-let isMoving = false;
-let currentMode = 'none';
-let lastTouchX = 0;
-let lastTouchY = 0;
-let pinchScaleComponentAdded = false;
-let activeModel = null; // Текущая активная модель
+class ARViewer {
+    constructor() {
+        // Инициализация
+        this.scene = new THREE.Scene();
+        this.camera = null;
+        this.renderer = null;
+        this.controls = null;
+        this.video = document.getElementById('cameraVideo');
+        this.canvas = document.getElementById('arCanvas');
+        this.models = [];
+        this.currentMode = 'move'; // 'move' или 'rotate'
+        this.touchStart = { x: 0, y: 0 };
+        this.selectedModel = null;
+        this.isDragging = false;
 
-// Глобальная функция для показа сообщений
-function showMessage(text, duration = 3000) {
-    console.log('📢 Сообщение:', text);
+        // Элементы UI
+        this.loading = document.getElementById('loading');
+        this.modelList = document.getElementById('modelList');
+        this.moveBtn = document.getElementById('moveBtn');
+        this.rotateBtn = document.getElementById('rotateBtn');
+        this.photoBtn = document.getElementById('photoBtn');
+        this.resetBtn = document.getElementById('resetBtn');
 
-    const messageBox = document.getElementById('messageBox');
-    if (messageBox) {
-        messageBox.textContent = text;
-        messageBox.style.display = 'block';
+        // Инициализация
+        this.initCamera();
+        this.initThreeJS();
+        this.setupEventListeners();
+        this.loadModelList();
 
-        setTimeout(() => {
-            if (messageBox && messageBox.parentNode) {
-                messageBox.style.display = 'none';
-            }
-        }, duration);
-    } else {
-        const tempMsg = document.createElement('div');
-        tempMsg.textContent = text;
-        tempMsg.style.cssText = `
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(0, 0, 0, 0.9);
-            color: white;
-            padding: 20px 30px;
-            border-radius: 15px;
-            z-index: 10000;
-            font-family: 'Pacifico', cursive;
-            font-size: 18px;
-            text-align: center;
-            max-width: 80%;
-            backdrop-filter: blur(5px);
-        `;
-
-        document.body.appendChild(tempMsg);
-        setTimeout(() => {
-            if (tempMsg.parentNode) {
-                tempMsg.remove();
-            }
-        }, duration);
-    }
-}
-
-// ===== ОСНОВНАЯ ИНИЦИАЛИЗАЦИЯ =====
-document.addEventListener('DOMContentLoaded', function () {
-    console.log('🚀 AR приложение запускается');
-
-    // Получаем элементы
-    scene = document.querySelector('#arScene');
-    mainModel = document.querySelector('#mainModel');
-    markerModel = document.querySelector('#markerModel');
-    activeModel = mainModel; // По умолчанию используем основную модель
-
-    // Настройка кнопок
-    const placeBtn = document.getElementById('PlaceButton');
-    const rotateBtn = document.getElementById('RotateButton');
-    const moveBtn = document.getElementById('MoveButton');
-    const shotBtn = document.getElementById('ShotButton');
-    const resetBtn = document.getElementById('ResetButton');
-
-    // Проверяем, что все элементы найдены
-    if (!mainModel) {
-        console.error('❌ Основная модель не найдена!');
-        showMessage('Ошибка: модель не найдена', 5000);
+        // Начальная анимация
+        this.animate();
     }
 
-    // 1. ОБРАБОТКА ЗАГРУЗКИ МОДЕЛИ
-    mainModel.addEventListener('model-loaded', function () {
-        console.log('✅ 3D модель загружена');
-        showMessage('3D модель готова к размещению', 2000);
-    });
+    async initCamera() {
+        try {
+            this.showLoading('Запуск камеры...');
 
-    mainModel.addEventListener('model-error', function (e) {
-        console.error('❌ Ошибка загрузки модели:', e.detail);
-        showMessage('Ошибка загрузки 3D модели. Проверьте путь к файлу.', 5000);
-    });
-
-    // 2. ИНИЦИАЛИЗАЦИЯ AR СЦЕНЫ
-    scene.addEventListener('loaded', function () {
-        console.log('✅ AR сцена загружена');
-        showMessage('AR сцена загружена. Нажмите "Разместить"', 3000);
-
-        // Проверяем, загрузилась ли модель
-        setTimeout(checkModelStatus, 1000);
-
-        // Настраиваем отслеживание маркера
-        setupMarkerTracking();
-    });
-
-    function checkModelStatus() {
-        console.log('🔍 Проверка статуса модели:');
-        console.log('- Основная модель:', mainModel ? 'Найдена' : 'Не найдена');
-        console.log('- Видимость:', mainModel ? mainModel.getAttribute('visible') : 'N/A');
-
-        // Проверяем компонент gltf-model
-        if (mainModel && mainModel.components && mainModel.components['gltf-model']) {
-            const gltfComponent = mainModel.components['gltf-model'];
-            console.log('- GLTF компонент:', gltfComponent);
-            console.log('- Модель загружена:', gltfComponent.model ? 'Да' : 'Нет');
-        }
-
-        // Проверяем путь к модели
-        const modelSrc = mainModel ? mainModel.getAttribute('gltf-model') : 'N/A';
-        console.log('- Путь к модели:', modelSrc);
-    }
-
-    function setupMarkerTracking() {
-        const marker = document.querySelector('#marker');
-        if (marker) {
-            marker.addEventListener('markerFound', function () {
-                console.log('🎯 Маркер обнаружен');
-                if (isModelPlaced) {
-                    // Если модель уже размещена, скрываем основную и показываем маркерную
-                    mainModel.setAttribute('visible', 'false');
-                    markerModel.setAttribute('visible', 'true');
-                    activeModel = markerModel;
-                    showMessage('Модель переключена на маркер', 2000);
+            // Получаем доступ к камере
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    facingMode: 'environment',
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 }
                 }
             });
 
-            marker.addEventListener('markerLost', function () {
-                console.log('🎯 Маркер потерян');
-                if (isModelPlaced && mainModel.getAttribute('visible') === 'false') {
-                    // Возвращаемся к основной модели
-                    markerModel.setAttribute('visible', 'false');
-                    mainModel.setAttribute('visible', 'true');
-                    activeModel = mainModel;
-                }
-            });
+            this.video.srcObject = stream;
+            await this.video.play();
+
+            this.hideLoading();
+
+        } catch (error) {
+            console.error('Ошибка камеры:', error);
+            this.showLoading('Ошибка доступа к камере');
         }
     }
 
-    // 3. РАЗМЕЩЕНИЕ МОДЕЛИ (ИСПРАВЛЕННАЯ ФУНКЦИЯ)
-    placeBtn.addEventListener('click', function () {
-        console.log('🖱️ Кнопка "Разместить" нажата');
+    initThreeJS() {
+        // Размеры
+        const width = window.innerWidth;
+        const height = window.innerHeight;
 
-        if (!isModelPlaced) {
-            // Вариант 1: Если маркер виден, используем его
-            const marker = document.querySelector('#marker');
-            if (marker && marker.getAttribute('visible') === 'true') {
-                console.log('✅ Размещаем модель на маркере');
-                markerModel.setAttribute('visible', 'true');
-                mainModel.setAttribute('visible', 'false');
-                activeModel = markerModel;
-                isModelPlaced = true;
+        // Создаем камеру Three.js
+        this.camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 1000);
+        this.camera.position.set(0, 0, 5);
+
+        // Создаем рендерер
+        this.renderer = new THREE.WebGLRenderer({
+            canvas: this.canvas,
+            alpha: true,
+            antialias: true
+        });
+        this.renderer.setSize(width, height);
+        this.renderer.setPixelRatio(window.devicePixelRatio);
+
+        // Освещение
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+        this.scene.add(ambientLight);
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+        directionalLight.position.set(5, 10, 7.5);
+        this.scene.add(directionalLight);
+
+        // Добавляем сетку для ориентации (опционально)
+        const gridHelper = new THREE.GridHelper(10, 10);
+        gridHelper.visible = false; // Скрываем по умолчанию
+        this.scene.add(gridHelper);
+    }
+
+    setupEventListeners() {
+        // Кнопка списка моделей
+        document.getElementById('modelBtn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.modelList.classList.toggle('active');
+        });
+
+        // Закрытие списка при клике вне его
+        document.addEventListener('click', () => {
+            this.modelList.classList.remove('active');
+        });
+
+        // Режимы управления
+        this.moveBtn.addEventListener('click', () => {
+            this.currentMode = 'move';
+            this.moveBtn.classList.add('active');
+            this.rotateBtn.classList.remove('active');
+        });
+
+        this.rotateBtn.addEventListener('click', () => {
+            this.currentMode = 'rotate';
+            this.rotateBtn.classList.add('active');
+            this.moveBtn.classList.remove('active');
+        });
+
+        // Кнопка фото
+        this.photoBtn.addEventListener('click', () => this.takePhoto());
+
+        // Кнопка сброса
+        this.resetBtn.addEventListener('click', () => this.resetScene());
+
+        // Обработка жестов
+        this.canvas.addEventListener('touchstart', (e) => this.onTouchStart(e));
+        this.canvas.addEventListener('touchmove', (e) => this.onTouchMove(e));
+        this.canvas.addEventListener('touchend', () => this.onTouchEnd());
+
+        // Обработка жеста pinch для масштабирования
+        this.canvas.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 2) {
+                this.handlePinchStart(e);
             }
-            // Вариант 2: Размещаем перед камерой
-            else {
-                console.log('✅ Размещаем модель перед камерой');
-                mainModel.setAttribute('visible', 'true');
-                mainModel.setAttribute('position', '0 0 -2');
-                if (markerModel) markerModel.setAttribute('visible', 'false');
-                activeModel = mainModel;
-                isModelPlaced = true;
+        });
+
+        this.canvas.addEventListener('touchmove', (e) => {
+            if (e.touches.length === 2 && this.selectedModel) {
+                this.handlePinchMove(e);
+            }
+        });
+
+        // Адаптивность при изменении размера окна
+        window.addEventListener('resize', () => this.onResize());
+
+        // Клик для выбора модели
+        this.canvas.addEventListener('click', (e) => this.onCanvasClick(e));
+    }
+
+    loadModelList() {
+        // Список моделей (замените на свои модели)
+        const models = [
+            { id: 'cube', name: 'Елка', icon: '⬜', path: 'models/elka2.glb' },
+            { id: 'sphere', name: 'Автобус', icon: '⭕', path: 'models/bus.glb' }
+        ];
+
+        // Добавляем иконки в список
+        models.forEach(model => {
+            const icon = document.createElement('div');
+            icon.className = 'model-icon';
+            icon.innerHTML = model.icon;
+            icon.title = model.name;
+
+            icon.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                await this.loadModel(model.path);
+                this.modelList.classList.remove('active');
+            });
+
+            this.modelList.appendChild(icon);
+        });
+    }
+
+    async loadModel(path) {
+        this.showLoading('Загрузка модели...');
+
+        return new Promise((resolve, reject) => {
+            const loader = new THREE.GLTFLoader();
+
+            loader.load(
+                path,
+                (gltf) => {
+                    const model = gltf.scene;
+
+                    // Настройка модели
+                    model.userData.id = Date.now();
+                    model.position.set(0, 0, -2);
+                    model.scale.set(0.5, 0.5, 0.5);
+
+                    // Добавляем рамку выделения
+                    const box = new THREE.BoxHelper(model, 0x00ff00);
+                    box.visible = false;
+                    model.add(box);
+
+                    this.scene.add(model);
+                    this.models.push(model);
+                    this.selectedModel = model;
+
+                    this.hideLoading();
+                    resolve(model);
+                },
+                (progress) => {
+                    const percent = (progress.loaded / progress.total * 100).toFixed(0);
+                    this.showLoading(`Загрузка модели... ${percent}%`);
+                },
+                (error) => {
+                    console.error('Ошибка загрузки модели:', error);
+                    this.showLoading('Ошибка загрузки модели');
+                    setTimeout(() => this.hideLoading(), 2000);
+                    reject(error);
+                }
+            );
+        });
+    }
+
+    onTouchStart(e) {
+        if (!this.selectedModel || e.touches.length !== 1) return;
+
+        this.isDragging = true;
+        this.touchStart.x = e.touches[0].clientX;
+        this.touchStart.y = e.touches[0].clientY;
+
+        this.canvas.style.pointerEvents = 'auto';
+    }
+
+    onTouchMove(e) {
+        if (!this.selectedModel || !this.isDragging || e.touches.length !== 1) return;
+
+        const touch = e.touches[0];
+        const deltaX = touch.clientX - this.touchStart.x;
+        const deltaY = touch.clientY - this.touchStart.y;
+
+        if (this.currentMode === 'move') {
+            // Перемещение модели
+            this.selectedModel.position.x += deltaX * 0.01;
+            this.selectedModel.position.y -= deltaY * 0.01;
+        } else if (this.currentMode === 'rotate') {
+            // Поворот модели
+            this.selectedModel.rotation.y += deltaX * 0.01;
+            this.selectedModel.rotation.x += deltaY * 0.01;
+        }
+
+        this.touchStart.x = touch.clientX;
+        this.touchStart.y = touch.clientY;
+
+        e.preventDefault();
+    }
+
+    onTouchEnd() {
+        this.isDragging = false;
+        this.canvas.style.pointerEvents = 'none';
+    }
+
+    handlePinchStart(e) {
+        if (!this.selectedModel) return;
+
+        const touch1 = e.touches[0];
+        const touch2 = e.touches[1];
+
+        this.pinchStartDistance = Math.hypot(
+            touch2.clientX - touch1.clientX,
+            touch2.clientY - touch1.clientY
+        );
+
+        this.pinchStartScale = this.selectedModel.scale.x;
+    }
+
+    handlePinchMove(e) {
+        const touch1 = e.touches[0];
+        const touch2 = e.touches[1];
+
+        const currentDistance = Math.hypot(
+            touch2.clientX - touch1.clientX,
+            touch2.clientY - touch1.clientY
+        );
+
+        const scaleFactor = currentDistance / this.pinchStartDistance;
+        const newScale = this.pinchStartScale * scaleFactor;
+
+        // Ограничиваем масштаб
+        newScale = Math.max(0.1, Math.min(5, newScale));
+
+        this.selectedModel.scale.setScalar(newScale);
+    }
+
+    onCanvasClick(e) {
+        // Raycaster для выбора модели
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+
+        raycaster.setFromCamera(mouse, this.camera);
+
+        // Ищем пересечения
+        const intersects = raycaster.intersectObjects(this.models, true);
+
+        if (intersects.length > 0) {
+            // Нашли модель - выделяем её
+            let model = intersects[0].object;
+
+            // Поднимаемся до корневой модели
+            while (model.parent && !this.models.includes(model)) {
+                model = model.parent;
             }
 
-            if (isModelPlaced) {
-                placeBtn.textContent = '✓ Размещено';
-                placeBtn.style.background = '#00cc66';
-
-                // Активируем управление
-                enableGestures();
-
-                // Добавляем масштабирование
-                setTimeout(() => addPinchZoomComponent(), 500);
-
-                // Показываем подсказки по управлению
-                showMessage('Модель размещена! Используйте жесты для управления', 3000);
-                setTimeout(() => {
-                    showMessage('Управление:\n• 1 палец - вращение/перемещение\n• 2 пальца - масштабирование', 4000);
-                }, 3500);
-
-                // Логируем статус
-                console.log('📍 Модель размещена. Активная модель:', activeModel);
-                console.log('- Позиция:', activeModel.getAttribute('position'));
-                console.log('- Видимость:', activeModel.getAttribute('visible'));
+            if (this.models.includes(model)) {
+                this.selectModel(model);
             }
         } else {
-            console.log('ℹ️ Модель уже размещена');
-            showMessage('Модель уже размещена', 2000);
-        }
-    });
-
-    // 4. РЕЖИМ ВРАЩЕНИЯ
-    rotateBtn.addEventListener('click', function () {
-        if (!isModelPlaced || !activeModel) {
-            showMessage('Сначала разместите модель!', 2000);
-            return;
-        }
-
-        currentMode = currentMode === 'rotate' ? 'none' : 'rotate';
-        isRotating = currentMode === 'rotate';
-        isMoving = false;
-
-        rotateBtn.style.background = isRotating ? '#ff5500' : '#ff9900';
-        moveBtn.style.background = '#00cc66';
-
-        console.log(`🔄 Режим вращения: ${isRotating ? 'ВКЛ' : 'ВЫКЛ'}`);
-        showMessage(isRotating ? 'Режим вращения: двигайте палец по экрану' : 'Режим выключен', 2000);
-    });
-
-    // 5. РЕЖИМ ПЕРЕМЕЩЕНИЯ
-    moveBtn.addEventListener('click', function () {
-        if (!isModelPlaced || !activeModel) {
-            showMessage('Сначала разместите модель!', 2000);
-            return;
-        }
-
-        currentMode = currentMode === 'move' ? 'none' : 'move';
-        isMoving = currentMode === 'move';
-        isRotating = false;
-
-        moveBtn.style.background = isMoving ? '#009944' : '#00cc66';
-        rotateBtn.style.background = '#ff9900';
-
-        console.log(`↕️ Режим перемещения: ${isMoving ? 'ВКЛ' : 'ВЫКЛ'}`);
-        showMessage(isMoving ? 'Режим перемещения: двигайте палец по экрану' : 'Режим выключен', 2000);
-    });
-
-    // 6. СБРОС МОДЕЛИ
-    resetBtn.addEventListener('click', function () {
-        if (!isModelPlaced || !activeModel) {
-            showMessage('Сначала разместите модель!', 2000);
-            return;
-        }
-
-        // Сбрасываем активную модель
-        activeModel.setAttribute('position', '0 0 -2');
-        activeModel.setAttribute('rotation', '0 0 0');
-        activeModel.setAttribute('scale', '0.1 0.1 0.1');
-
-        // Сбрасываем режимы
-        currentMode = 'none';
-        isRotating = false;
-        isMoving = false;
-
-        rotateBtn.style.background = '#ff9900';
-        moveBtn.style.background = '#00cc66';
-
-        console.log('🔄 Модель сброшена');
-        showMessage('Модель сброшена в исходное положение', 2000);
-    });
-
-    // 7. СНИМОК ЭКРАНА
-    shotBtn.addEventListener('click', function () {
-        if (!isModelPlaced || !activeModel) {
-            showMessage('Сначала разместите модель!', 2000);
-            return;
-        }
-
-        console.log('📸 Создаем фото...');
-        showMessage('Создаем фото...', 1500);
-
-        setTimeout(captureScreenshot, 300);
-    });
-
-    // 8. ВКЛЮЧЕНИЕ ЖЕСТОВ УПРАВЛЕНИЯ
-    function enableGestures() {
-        console.log('✅ Жесты управления активированы для модели:', activeModel);
-
-        // Удаляем старые обработчики
-        scene.removeEventListener('touchstart', handleTouchStart);
-        scene.removeEventListener('touchmove', handleTouchMove);
-        scene.removeEventListener('touchend', handleTouchEnd);
-
-        // Добавляем новые
-        scene.addEventListener('touchstart', handleTouchStart, { passive: false });
-        scene.addEventListener('touchmove', handleTouchMove, { passive: false });
-        scene.addEventListener('touchend', handleTouchEnd);
-    }
-
-    // 9. ОБРАБОТЧИКИ КАСАНИЙ
-    function handleTouchStart(e) {
-        if (!isModelPlaced || !activeModel || (!isRotating && !isMoving)) return;
-
-        if (e.touches.length === 1) {
-            const touch = e.touches[0];
-            lastTouchX = touch.clientX;
-            lastTouchY = touch.clientY;
-            e.preventDefault();
+            // Клик мимо модели - снимаем выделение
+            this.selectedModel = null;
         }
     }
 
-    function handleTouchMove(e) {
-        if (!isModelPlaced || !activeModel || (!isRotating && !isMoving)) return;
+    selectModel(model) {
+        // Снимаем выделение со всех моделей
+        this.models.forEach(m => {
+            const box = m.getObjectByProperty('type', 'BoxHelper');
+            if (box) box.visible = false;
+        });
 
-        if (e.touches.length === 1) {
-            const touch = e.touches[0];
-            const deltaX = touch.clientX - lastTouchX;
-            const deltaY = touch.clientY - lastTouchY;
-
-            if (isRotating) {
-                const rotation = activeModel.getAttribute('rotation');
-                activeModel.setAttribute('rotation', {
-                    x: rotation.x + deltaY * 0.5,
-                    y: rotation.y + deltaX * 0.5,
-                    z: rotation.z
-                });
-            }
-            else if (isMoving) {
-                const position = activeModel.getAttribute('position');
-                activeModel.setAttribute('position', {
-                    x: position.x + deltaX * 0.01,
-                    y: position.y - deltaY * 0.01,
-                    z: position.z
-                });
-            }
-
-            lastTouchX = touch.clientX;
-            lastTouchY = touch.clientY;
-            e.preventDefault();
-        }
+        // Выделяем выбранную модель
+        this.selectedModel = model;
+        const box = model.getObjectByProperty('type', 'BoxHelper');
+        if (box) box.visible = true;
     }
 
-    function handleTouchEnd(e) {
-        // Сброс состояния
-    }
-
-    // 10. ФУНКЦИЯ СНИМКА ЭКРАНА
-    function captureScreenshot() {
+    async takePhoto() {
         try {
-            // Ждем рендера
-            setTimeout(() => {
-                const canvases = document.querySelectorAll('canvas');
+            this.showLoading('Создание фото...');
 
-                if (canvases.length === 0) {
-                    showMessage('Ошибка: canvas не найден', 2000);
+            // Создаем временный canvas для объединения видео и 3D
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+
+            tempCanvas.width = this.canvas.width;
+            tempCanvas.height = this.canvas.height;
+
+            // 1. Рисуем видео кадр
+            tempCtx.drawImage(this.video, 0, 0, tempCanvas.width, tempCanvas.height);
+
+            // 2. Рисуем 3D сцену поверх
+            tempCtx.drawImage(this.canvas, 0, 0);
+
+            // Конвертируем в blob
+            tempCanvas.toBlob(async (blob) => {
+                if (!blob) {
+                    this.showLoading('Ошибка создания фото');
+                    setTimeout(() => this.hideLoading(), 2000);
                     return;
                 }
 
-                // Ищем canvas сцены A-Frame
-                let targetCanvas = scene.canvas || canvases[0];
+                // Сохраняем файл
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = `ar-photo-${Date.now()}.png`;
+                link.click();
 
-                // Ищем самый большой canvas
-                canvases.forEach(canvas => {
-                    if (canvas.width > 300 && canvas.height > 300) {
-                        targetCanvas = canvas;
-                    }
-                });
+                // Очищаем URL
+                setTimeout(() => URL.revokeObjectURL(link.href), 1000);
 
-                console.log('📸 Canvas размер:', targetCanvas.width, 'x', targetCanvas.height);
+                this.hideLoading();
 
-                // Создаем финальный canvas
-                const finalCanvas = document.createElement('canvas');
-                finalCanvas.width = targetCanvas.width;
-                finalCanvas.height = targetCanvas.height;
-                const ctx = finalCanvas.getContext('2d');
-
-                // Фон
-                ctx.fillStyle = '#000000';
-                ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
-
-                // Копируем
-                ctx.drawImage(targetCanvas, 0, 0);
-
-                // Водяной знак
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-                ctx.font = 'bold 28px Pacifico';
-                ctx.fillText('🎄 С Новым Годом!', 30, finalCanvas.height - 40);
-
-                // Сохраняем
-                saveImage(finalCanvas);
-            }, 100);
+            }, 'image/png');
 
         } catch (error) {
-            console.error('Ошибка скриншота:', error);
-            showMessage('Ошибка: ' + error.message, 3000);
+            console.error('Ошибка создания фото:', error);
+            this.showLoading('Ошибка создания фото');
+            setTimeout(() => this.hideLoading(), 2000);
         }
     }
 
-    function saveImage(canvas) {
-        try {
-            const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-
-            const link = document.createElement('a');
-            link.download = `AR_НовыйГод_${timestamp}.jpg`;
-            link.href = dataUrl;
-            link.style.display = 'none';
-
-            document.body.appendChild(link);
-            link.click();
-
-            setTimeout(() => {
-                if (link.parentNode) {
-                    document.body.removeChild(link);
-                }
-                showSaveInstructions();
-            }, 100);
-
-        } catch (error) {
-            console.error('Ошибка сохранения:', error);
-            showMessage('Ошибка сохранения', 3000);
-        }
-    }
-
-    function showSaveInstructions() {
-        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-
-        if (isIOS) {
-            showMessage('📸 Фото создано! Нажмите на миниатюру вверху → "Поделиться" → "Сохранить в Фото"', 4000);
-        } else {
-            showMessage('📸 Фото сохранено в папку "Загрузки"!', 3000);
-        }
-    }
-
-    // 11. ОТЛАДКА
-    console.log('=== ИНФОРМАЦИЯ СИСТЕМЫ ===');
-    console.log('User Agent:', navigator.userAgent);
-    console.log('Основная модель:', mainModel);
-    console.log('Модель маркера:', markerModel);
-    console.log('Сцена:', scene);
-
-    // Проверка камеры
-    setTimeout(() => {
-        const video = document.querySelector('video');
-        if (video && video.videoWidth > 0) {
-            console.log('✅ Камера работает:', video.videoWidth, 'x', video.videoHeight);
-        } else {
-            console.warn('⚠️ Проблема с камерой');
-            showMessage('Разрешите доступ к камере', 3000);
-        }
-    }, 3000);
-});
-
-// ===== ГЛОБАЛЬНЫЕ ФУНКЦИИ ДЛЯ ОТЛАДКИ =====
-
-window.debugModel = function () {
-    console.log('=== ОТЛАДКА МОДЕЛИ ===');
-    console.log('Активная модель:', window.activeModel);
-    console.log('Размещена:', window.isModelPlaced);
-
-    const mainModel = document.querySelector('#mainModel');
-    const markerModel = document.querySelector('#markerModel');
-
-    console.log('Основная модель:');
-    console.log('- Элемент:', mainModel);
-    console.log('- Видимость:', mainModel ? mainModel.getAttribute('visible') : 'N/A');
-    console.log('- Позиция:', mainModel ? mainModel.getAttribute('position') : 'N/A');
-    console.log('- Масштаб:', mainModel ? mainModel.getAttribute('scale') : 'N/A');
-
-    console.log('Модель маркера:');
-    console.log('- Элемент:', markerModel);
-    console.log('- Видимость:', markerModel ? markerModel.getAttribute('visible') : 'N/A');
-
-    // Проверка GLTF модели
-    if (mainModel && mainModel.components && mainModel.components['gltf-model']) {
-        console.log('GLTF компонент:', mainModel.components['gltf-model']);
-    }
-};
-
-window.showModel = function () {
-    const mainModel = document.querySelector('#mainModel');
-    if (mainModel) {
-        mainModel.setAttribute('visible', 'true');
-        mainModel.setAttribute('position', '0 0 -2');
-        window.isModelPlaced = true;
-        window.activeModel = mainModel;
-
-        const placeBtn = document.getElementById('PlaceButton');
-        if (placeBtn) {
-            placeBtn.textContent = '✓ Размещено';
-            placeBtn.style.background = '#00cc66';
-        }
-
-        console.log('✅ Модель принудительно показана');
-        showMessage('Модель показана', 2000);
-    }
-};
-
-// ===== РАБОЧИЙ КОМПОНЕНТ МАСШТАБИРОВАНИЯ =====
-
-function setupPinchZoom() {
-    console.log('🔧 Настраиваем жест масштабирования...');
-
-    let initialDistance = 0;
-    let initialScale = { x: 0.1, y: 0.1, z: 0.1 };
-    let isPinching = false;
-    let currentActiveModel = null;
-
-    // Функция для расчета расстояния между двумя точками
-    function getDistance(touch1, touch2) {
-        const dx = touch2.clientX - touch1.clientX;
-        const dy = touch2.clientY - touch1.clientY;
-        return Math.sqrt(dx * dx + dy * dy);
-    }
-
-    // Обработчик начала касания
-    function handleTouchStart(e) {
-        // Если касаются двумя пальцами и модель размещена
-        if (e.touches.length === 2) {
-            currentActiveModel = window.activeModel || getActiveModel();
-
-            if (currentActiveModel && currentActiveModel.getAttribute('visible') === 'true') {
-                isPinching = true;
-                initialDistance = getDistance(e.touches[0], e.touches[1]);
-                initialScale = currentActiveModel.getAttribute('scale');
-
-                // Предотвращаем прокрутку страницы и другие жесты
-                e.preventDefault();
-                e.stopPropagation();
-
-                // Показываем подсказку один раз
-                if (!localStorage.getItem('pinchHintShown')) {
-                    showMessage('✌️ Используйте два пальца для масштабирования', 2000);
-                    localStorage.setItem('pinchHintShown', 'true');
-                }
-
-                console.log('✌️ Начало жеста масштабирования');
-                return true;
-            }
-        }
-        return false;
-    }
-
-    // Обработчик движения пальцев
-    function handleTouchMove(e) {
-        if (!isPinching || e.touches.length !== 2 || !currentActiveModel) return;
-
-        const currentDistance = getDistance(e.touches[0], e.touches[1]);
-
-        if (initialDistance > 0) {
-            // Вычисляем коэффициент масштабирования
-            const scaleFactor = currentDistance / initialDistance;
-
-            // Ограничиваем масштаб (от 30% до 300%)
-            const minScale = 0.03;
-            const maxScale = 0.3;
-            const clampedScale = Math.max(minScale, Math.min(maxScale, scaleFactor));
-
-            // Применяем новый масштаб
-            const newScale = {
-                x: initialScale.x * clampedScale,
-                y: initialScale.y * clampedScale,
-                z: initialScale.z * clampedScale
-            };
-
-            currentActiveModel.setAttribute('scale', newScale);
-
-            // Обновляем начальные значения для плавности
-            initialDistance = currentDistance;
-            initialScale = newScale;
-
-            e.preventDefault();
-            e.stopPropagation();
-
-            console.log('🔍 Масштаб изменен:', newScale);
-            return true;
-        }
-        return false;
-    }
-
-    // Обработчик окончания касания
-    function handleTouchEnd(e) {
-        if (isPinching) {
-            isPinching = false;
-            initialDistance = 0;
-            console.log('✅ Жест масштабирования завершен');
-        }
-    }
-
-    // Добавляем обработчики событий
-    const scene = document.querySelector('#arScene');
-    if (scene) {
-        // Удаляем старые обработчики если есть
-        scene.removeEventListener('touchstart', handleTouchStart);
-        scene.removeEventListener('touchmove', handleTouchMove);
-        scene.removeEventListener('touchend', handleTouchEnd);
-
-        // Добавляем новые обработчики
-        scene.addEventListener('touchstart', handleTouchStart, { passive: false });
-        scene.addEventListener('touchmove', handleTouchMove, { passive: false });
-        scene.addEventListener('touchend', handleTouchEnd);
-
-        console.log('✅ Обработчики жеста масштабирования установлены');
-
-        // Добавляем также обработку для всего документа на случай если события не доходят до сцены
-        document.removeEventListener('touchstart', handleTouchStart);
-        document.removeEventListener('touchmove', handleTouchMove);
-        document.removeEventListener('touchend', handleTouchEnd);
-
-        document.addEventListener('touchstart', handleTouchStart, { passive: false });
-        document.addEventListener('touchmove', handleTouchMove, { passive: false });
-        document.addEventListener('touchend', handleTouchEnd);
-
-        console.log('✅ Обработчики жеста масштабирования установлены на документ');
-    }
-
-    // Возвращаем функции для управления
-    return {
-        enable: function () {
-            console.log('✅ Масштабирование включено');
-        },
-        disable: function () {
-            console.log('⏸️ Масштабирование отключено');
-        }
-    };
-}
-
-// Функция для получения активной модели
-function getActiveModel() {
-    const mainModel = document.querySelector('#mainModel');
-    const markerModel = document.querySelector('#markerModel');
-
-    if (mainModel && mainModel.getAttribute('visible') === 'true') {
-        return mainModel;
-    }
-    if (markerModel && markerModel.getAttribute('visible') === 'true') {
-        return markerModel;
-    }
-    return null;
-}
-
-// ===== ИНТЕГРАЦИЯ С СУЩЕСТВУЮЩИМ КОДОМ =====
-
-// Обновленная функция для включения всех жестов
-function enableAllGestures() {
-    console.log('🎮 Активируем все жесты управления...');
-
-    // Включить жесты вращения и перемещения
-    if (typeof enableGestures === 'function') {
-        enableGestures();
-    }
-
-    // Включить жест масштабирования
-    const pinchZoom = setupPinchZoom();
-    pinchZoom.enable();
-
-    console.log('✅ Все жесты управления активированы');
-
-    // Показываем инструкцию по управлению
-    setTimeout(() => {
-        showMessage('🎮 Управление:\n• 1 палец - вращение/перемещение\n• 2 пальца - масштабирование', 4000);
-    }, 1000);
-}
-
-// Обновляем функцию размещения модели для включения всех жестов
-document.addEventListener('DOMContentLoaded', function () {
-    const placeBtn = document.getElementById('PlaceButton');
-
-    if (placeBtn) {
-        // Сохраняем оригинальный обработчик
-        const originalClickHandler = placeBtn.onclick;
-
-        placeBtn.addEventListener('click', function (e) {
-            // Вызываем оригинальный обработчик
-            if (originalClickHandler) {
-                originalClickHandler.call(this, e);
-            }
-
-            // Даем время на размещение модели
-            setTimeout(() => {
-                // Проверяем, размещена ли модель
-                const model = getActiveModel();
-                if (model && model.getAttribute('visible') === 'true') {
-                    // Включаем все жесты управления
-                    setTimeout(() => {
-                        enableAllGestures();
-                    }, 300);
-                }
-            }, 500);
+    resetScene() {
+        // Удаляем все модели
+        this.models.forEach(model => {
+            this.scene.remove(model);
         });
-    }
-});
 
-// ===== КОМАНДЫ ДЛЯ ТЕСТИРОВАНИЯ =====
-
-// Добавьте в консоль для тестирования:
-window.testPinchZoom = function () {
-    console.log('🔧 Тест жеста масштабирования');
-
-    const activeModel = getActiveModel();
-    if (!activeModel) {
-        console.log('❌ Активная модель не найдена');
-        showMessage('Сначала разместите модель!', 2000);
-        return;
+        this.models = [];
+        this.selectedModel = null;
     }
 
-    const currentScale = activeModel.getAttribute('scale');
-    console.log('Текущий масштаб:', currentScale);
+    onResize() {
+        const width = window.innerWidth;
+        const height = window.innerHeight;
 
-    // Тестовое увеличение масштаба на 20%
-    const newScale = {
-        x: currentScale.x * 1.2,
-        y: currentScale.y * 1.2,
-        z: currentScale.z * 1.2
-    };
+        this.camera.aspect = width / height;
+        this.camera.updateProjectionMatrix();
 
-    // Ограничиваем максимальный масштаб
-    const maxScale = 0.3;
-    const finalScale = {
-        x: Math.min(newScale.x, maxScale),
-        y: Math.min(newScale.y, maxScale),
-        z: Math.min(newScale.z, maxScale)
-    };
-
-    activeModel.setAttribute('scale', finalScale);
-    console.log('Новый масштаб:', finalScale);
-    showMessage('Тест: масштаб увеличен на 20%', 2000);
-};
-
-window.resetModelScale = function () {
-    const activeModel = getActiveModel();
-    if (activeModel) {
-        activeModel.setAttribute('scale', '0.1 0.1 0.1');
-        console.log('✅ Масштаб сброшен к исходному');
-        showMessage('Масштаб сброшен', 2000);
+        this.renderer.setSize(width, height);
     }
-};
 
-// ===== БЫСТРЫЙ ФИКС ДЛЯ ПРОВЕРКИ =====
+    animate() {
+        requestAnimationFrame(() => this.animate());
 
-// Функция для быстрого теста масштабирования
-function quickPinchZoomFix() {
-    console.log('⚡ Быстрая настройка жеста масштабирования');
-
-    let initialPinchDistance = 0;
-    let initialPinchScale = null;
-    let isPinchingNow = false;
-
-    // Обработчики событий
-    function onTouchStart(e) {
-        if (e.touches.length === 2) {
-            const activeModel = getActiveModel();
-            if (activeModel && activeModel.getAttribute('visible') === 'true') {
-                initialPinchDistance = Math.hypot(
-                    e.touches[1].clientX - e.touches[0].clientX,
-                    e.touches[1].clientY - e.touches[0].clientY
-                );
-                initialPinchScale = activeModel.getAttribute('scale');
-                isPinchingNow = true;
-                e.preventDefault();
-                return true;
-            }
+        // Обновляем рендерер
+        if (this.renderer && this.scene && this.camera) {
+            this.renderer.render(this.scene, this.camera);
         }
-        return false;
     }
 
-    function onTouchMove(e) {
-        if (isPinchingNow && e.touches.length === 2) {
-            const currentDistance = Math.hypot(
-                e.touches[1].clientX - e.touches[0].clientX,
-                e.touches[1].clientY - e.touches[0].clientY
-            );
-
-            if (initialPinchDistance > 0 && initialPinchScale) {
-                const scaleFactor = currentDistance / initialPinchDistance;
-                const minScale = 0.03;
-                const maxScale = 0.3;
-                const clampedScale = Math.max(minScale, Math.min(maxScale, scaleFactor));
-
-                const newScale = {
-                    x: initialPinchScale.x * clampedScale,
-                    y: initialPinchScale.y * clampedScale,
-                    z: initialPinchScale.z * clampedScale
-                };
-
-                const activeModel = getActiveModel();
-                if (activeModel) {
-                    activeModel.setAttribute('scale', newScale);
-                }
-
-                e.preventDefault();
-                return true;
-            }
-        }
-        return false;
+    showLoading(text) {
+        this.loading.textContent = text;
+        this.loading.style.display = 'block';
     }
 
-    function onTouchEnd(e) {
-        isPinchingNow = false;
+    hideLoading() {
+        this.loading.style.display = 'none';
     }
-
-    // Добавляем обработчики
-    document.addEventListener('touchstart', onTouchStart, { passive: false });
-    document.addEventListener('touchmove', onTouchMove, { passive: false });
-    document.addEventListener('touchend', onTouchEnd);
-
-    console.log('⚡ Быстрый фикс масштабирования активирован');
-    return true;
 }
 
-// Запускаем быстрый фикс при загрузке
-setTimeout(quickPinchZoomFix, 2000);
+// Инициализация при загрузке страницы
+window.addEventListener('DOMContentLoaded', () => {
+    new ARViewer();
+});
 
-// ===== ИНИЦИАЛИЗАЦИЯ ПРИ ЗАГРУЗКЕ =====
-
-// Автоматически активируем жесты, если модель уже размещена
-setTimeout(() => {
-    console.log('🔄 Проверяем состояние модели...');
-
-    const checkModel = setInterval(() => {
-        const model = getActiveModel();
-        if (model && model.getAttribute('visible') === 'true') {
-            clearInterval(checkModel);
-            console.log('✅ Модель уже размещена, включаем жесты');
-            enableAllGestures();
-        }
-    }, 1000);
-
-    // Останавливаем проверку через 10 секунд
-    setTimeout(() => clearInterval(checkModel), 10000);
-}, 3000);
-
-console.log('✅ Модуль жеста масштабирования загружен');
-console.log('📝 Доступные команды: window.testPinchZoom(), window.resetModelScale()');
+// Обработка ошибок загрузки ресурсов
+window.addEventListener('error', (e) => {
+    console.error('Global error:', e);
+});

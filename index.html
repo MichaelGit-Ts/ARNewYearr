@@ -1,71 +1,194 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Новый Год - AR Просмотр</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>AR Quick Look</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
 
-    <!-- A-Frame и AR.js -->
-    <script src="JS_library/aframe.min.js"></script>
-    <script src="JS_library/aframe-ar.js"></script>
-    <script src="JS_library/aframe.min.js"></script>
-    <script src="JS_library/aframe-extras.min.js"></script>
+        body {
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+        }
 
-    <!-- Простое решение для скриншотов -->
+        #cameraContainer {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
 
-    <!-- Стили -->
-    <link rel="stylesheet" href="styles.css">
-    <link href="https://fonts.googleapis.com/css2?family=Pacifico&display=swap" rel="stylesheet">
+        #cameraVideo {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        #arCanvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+            pointer-events: none;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            z-index: 3;
+            background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
+            padding: 20px 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .control-btn {
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 12px;
+            border-radius: 50%;
+            width: 56px;
+            height: 56px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            cursor: pointer;
+            user-select: none;
+            touch-action: manipulation;
+        }
+
+        .control-btn.active {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .dropdown {
+            position: relative;
+        }
+
+        .dropdown-content {
+            position: absolute;
+            bottom: 70px;
+            left: 0;
+            background: rgba(0, 0, 0, 0.9);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 15px;
+            display: none;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            min-width: 250px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .dropdown-content.active {
+            display: grid;
+        }
+
+        .model-icon {
+            width: 70px;
+            height: 70px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .model-icon:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        #loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 18px;
+            z-index: 4;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 20px 30px;
+            border-radius: 10px;
+            display: none;
+        }
+
+        @media (max-width: 768px) {
+            .controls {
+                padding: 15px 10px 25px;
+                gap: 10px;
+            }
+
+            .control-btn {
+                width: 50px;
+                height: 50px;
+                font-size: 20px;
+            }
+
+            .dropdown-content {
+                min-width: 200px;
+                gap: 10px;
+            }
+
+            .model-icon {
+                width: 60px;
+                height: 60px;
+            }
+        }
+    </style>
 </head>
 
 <body>
-    <!-- AR Сцена (УБРАТЬ renderer атрибут!) -->
-    <!-- Удалите старый блок с fallbackModel и исправьте основную модель -->
-    <a-scene id="arScene" vr-mode-ui="enabled: false"
-        arjs="sourceType: webcam; debugUIEnabled: false; detectionMode: mono; matrixCodeType: 3x3;" embedded>
-    
-        <!-- Маркер (необязательный) -->
-        <a-marker id="marker" preset="hiro" visible="false">
-            <!-- Эта модель будет видна только при обнаружении маркера -->
-            <a-entity id="markerModel" gltf-model="#busModel" scale="0.1 0.1 0.1" position="0 0 0" rotation="0 0 0"
-                visible="false">
-            </a-entity>
-        </a-marker>
-    
-        <!-- Основная модель (будет использоваться для размещения перед камерой) -->
-        <a-entity id="mainModel" gltf-model="#busModel" scale="0.1 0.1 0.1" position="0 0 -2" rotation="0 0 0"
-            visible="false">
-        </a-entity>
-    
-        <!-- Камера -->
-        <a-entity camera></a-entity>
-    
-        <!-- Ассеты -->
-        <a-assets>
-            <!-- Убедитесь, что путь правильный -->
-            <a-asset-item id="busModel" src="models/новогодний автобус V2.glb"></a-asset-item>
-        </a-assets>
-    </a-scene>
-    <!-- Интерфейс -->
-    <header class="header">
-        <h1 id="title">С Новым Годом!</h1>
-    </header>
+    <div id="loading">Загрузка...</div>
+
+    <div id="cameraContainer">
+        <video id="cameraVideo" autoplay playsinline></video>
+    </div>
+
+    <canvas id="arCanvas"></canvas>
 
     <div class="controls">
-        <button id="PlaceButton">📍 Разместить</button>
-        <button id="RotateButton">🔄 Вращать</button>
-        <button id="MoveButton">↕️ Перемещать</button>
-        <button id="ShotButton">📸 Сделать фото</button>
-        <button id="ResetButton">🔄 Сбросить</button>
+        <div class="dropdown">
+            <button id="modelBtn" class="control-btn">📦</button>
+            <div id="modelList" class="dropdown-content">
+                <!-- Модели будут добавляться динамически -->
+            </div>
+        </div>
+
+        <button id="moveBtn" class="control-btn active">↔️</button>
+        <button id="rotateBtn" class="control-btn">↻</button>
+        <button id="photoBtn" class="control-btn">📷</button>
+        <button id="resetBtn" class="control-btn">🗑️</button>
     </div>
 
-    <!-- Сообщения для пользователя -->
-    <div id="messageBox"
-        style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:rgba(0,0,0,0.8); color:white; padding:20px; border-radius:10px; z-index:10000;">
-    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.min.js"></script>
+    <script src="main.js"></script>
 </body>
-<!-- Подключаем наш скрипт ПОСЛЕ загрузки страницы -->
-<script src="script.js"></script>
 
 </html>
