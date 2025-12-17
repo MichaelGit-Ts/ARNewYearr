@@ -5,9 +5,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>AR Quick Look</title>
-    <script src="./lib/aframe.min.js"></script>
-    <!-- Убираем aframe-ar.js -->
+    <script src="lib/aframe.min.js"></script>
+    <script src="lib/aframe-extras.min.js"></script>
     <script src="./lib/hammer.min.js"></script>
+    <script src="lib/aframe-ar.js"></script>
     <link rel="stylesheet" href="css/style.css">
     <style>
         .ui-container {
@@ -110,22 +111,17 @@
     <a-scene embedded vr-mode-ui="enabled: false"
         cursor="rayOrigin: mouse">
         <!-- Камера -->
-        <a-entity camera look-controls="enabled: false" position="0 1.6 0">
-            <a-entity cursor="fuse: false; rayOrigin: mouse;" raycaster="objects: .draggable" position="0 0 -1"
-                geometry="primitive: ring; radiusInner: 0.02; radiusOuter: 0.03"
-                material="color: #007AFF; shader: flat">
+        <a-entity position="0 1.6 0">
+            <a-entity raycaster="objects: .draggable" position="0 0 -1">
             </a-entity>
         </a-entity>
 
         <!-- Свет -->
-        <a-entity light="type: ambient; color: #CCC; intensity: 0.5"></a-entity>
-        <a-entity light="type: directional; color: #FFF; intensity: 0.8" position="-0.5 1 1"></a-entity>
-
         <!-- Контейнер для моделей -->
         <a-entity id="models-container"></a-entity>
 
         <!-- Сетка для ориентации -->
-        <a-grid visible="false" id="grid"></a-grid>
+       
     </a-scene>
 
     <!-- UI элементы -->
