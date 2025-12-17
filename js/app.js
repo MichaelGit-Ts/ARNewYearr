@@ -9,13 +9,8 @@ let initialScale = { x: 1, y: 1, z: 1 };
 let modelsContainer;
 let hammerManager;
 
-// Переменные для управления камерой устройства
-let currentCameraMode = 'user'; // 'user' - передняя, 'environment' - задняя
-let currentStream = null;
-let isCameraActive = false;
-
 // ===== ИНИЦИАЛИЗАЦИЯ =====
-document.addEventListener('DOMContentLoaded', async function () {
+document.addEventListener('DOMContentLoaded', function () {
     console.log('🚀 Приложение запускается');
 
     // Получаем элементы
@@ -25,16 +20,13 @@ document.addEventListener('DOMContentLoaded', async function () {
     const message = document.getElementById('message');
 
     // Показываем сообщение при старте
-    showMessage('Запуск приложения...', 2000);
+    showMessage('Камера загружается...', 3000);
 
     // Инициализация UI
     initUI();
 
     // Инициализация жестов
     initGestures();
-
-    // Запускаем камеру устройства
-    await startDeviceCamera();
 
     // Когда сцена загружена
     scene.addEventListener('loaded', function () {
@@ -46,120 +38,12 @@ document.addEventListener('DOMContentLoaded', async function () {
         camera = cameraEl.getObject3D('camera');
         renderer = scene.renderer;
 
-        // Включаем preserveDrawingBuffer для скриншотов
-        if (renderer) {
-            renderer.preserveDrawingBuffer = true;
-        }
-
         // Показываем инструкцию
         setTimeout(() => {
             showMessage('Выберите модель из списка 📦', 4000);
         }, 1000);
     });
 });
-
-// ===== ЗАПУСК КАМЕРЫ УСТРОЙСТВА =====
-async function startDeviceCamera() {
-    try {
-        const loading = document.getElementById('loading');
-        loading.style.display = 'block';
-        loading.textContent = 'Запуск камеры...';
-
-        // Останавливаем предыдущий поток
-        if (currentStream) {
-            currentStream.getTracks().forEach(track => track.stop());
-            currentStream = null;
-        }
-
-        // Запрашиваем доступ к камере
-        currentStream = await navigator.mediaDevices.getUserMedia({
-            video: {
-                facingMode: currentCameraMode,
-                width: { ideal: 1280 },
-                height: { ideal: 720 }
-            },
-            audio: false
-        });
-
-        // Создаем видео элемент
-        const videoElement = document.createElement('video');
-        videoElement.id = 'device-video';
-        videoElement.autoplay = true;
-        videoElement.playsinline = true;
-        videoElement.style.display = 'none';
-        videoElement.srcObject = currentStream;
-
-        // Ждем загрузки видео
-        await new Promise((resolve) => {
-            videoElement.onloadedmetadata = () => {
-                videoElement.play();
-                resolve();
-            };
-        });
-
-        // Добавляем видео в DOM
-        if (!document.getElementById('device-video')) {
-            document.body.appendChild(videoElement);
-        }
-
-        isCameraActive = true;
-        console.log('✅ Камера устройства запущена');
-
-        // Обновляем кнопку
-        updateCameraButton();
-
-    } catch (error) {
-        console.error('❌ Ошибка камеры устройства:', error);
-        isCameraActive = false;
-
-        let errorMsg = 'Не удалось запустить камеру. ';
-        if (error.name === 'NotAllowedError') {
-            errorMsg += 'Разрешите доступ к камере в настройках браузера.';
-        } else if (error.name === 'NotFoundError') {
-            errorMsg += 'Камера не найдена.';
-        } else {
-            errorMsg += 'Попробуйте перезагрузить страницу.';
-        }
-
-        showMessage(errorMsg, 4000);
-    } finally {
-        const loading = document.getElementById('loading');
-        loading.style.display = 'none';
-    }
-}
-
-// ===== ПЕРЕКЛЮЧЕНИЕ КАМЕРЫ УСТРОЙСТВА =====
-async function switchDeviceCamera() {
-    try {
-        showMessage('Переключаем камеру...', 1500);
-
-        // Меняем режим камеры
-        currentCameraMode = currentCameraMode === 'user' ? 'environment' : 'user';
-
-        // Перезапускаем камеру
-        await startDeviceCamera();
-
-        showMessage(`Камера: ${currentCameraMode === 'user' ? 'Передняя' : 'Задняя'}`, 2000);
-
-    } catch (error) {
-        console.error('❌ Ошибка переключения камеры:', error);
-        showMessage('Не удалось переключить камеру', 2000);
-    }
-}
-
-// ===== ОБНОВЛЕНИЕ КНОПКИ КАМЕРЫ =====
-function updateCameraButton() {
-    const switchBtn = document.getElementById('switch-camera-btn');
-    if (!switchBtn) return;
-
-    if (currentCameraMode === 'user') {
-        switchBtn.innerHTML = '📱➡️';
-        switchBtn.title = 'Переключить на заднюю камеру';
-    } else {
-        switchBtn.innerHTML = '📷⬅️';
-        switchBtn.title = 'Переключить на переднюю камеру';
-    }
-}
 
 // ===== ИНИЦИАЛИЗАЦИЯ UI =====
 function initUI() {
@@ -230,9 +114,6 @@ function initUI() {
     // Кнопка фотографии
     document.getElementById('photo-btn').addEventListener('click', takeScreenshot);
 
-    // Кнопка переключения камеры
-    document.getElementById('switch-camera-btn').addEventListener('click', switchDeviceCamera);
-
     // Кнопка сброса
     document.getElementById('reset-btn').addEventListener('click', resetScene);
 
@@ -244,7 +125,6 @@ function initUI() {
     });
 
     updateModeButtons();
-    updateCameraButton();
 }
 
 // ===== ОБНОВЛЕНИЕ КНОПОК РЕЖИМОВ =====
@@ -465,8 +345,8 @@ function setupModelGestures(model) {
     });
 }
 
-// ===== СКРИНШОТ С КАМЕРОЙ УСТРОЙСТВА =====
-async function takeScreenshot() {
+// ===== СКРИНШОТ =====
+function takeScreenshot() {
     if (!activeModel) {
         showMessage('Сначала разместите модель!', 2000);
         return;
@@ -480,80 +360,38 @@ async function takeScreenshot() {
     uiContainer.style.display = 'none';
 
     // Ждем следующего кадра для рендера
-    requestAnimationFrame(async () => {
-        try {
-            const canvas = scene.canvas;
-            if (!canvas) {
-                throw new Error('Canvas не найден');
-            }
-
-            // Получаем видео с камеры устройства
-            const videoElement = document.getElementById('device-video');
-
-            // Создаем новый canvas
-            const screenshotCanvas = document.createElement('canvas');
-            const ctx = screenshotCanvas.getContext('2d');
-
-            if (videoElement && videoElement.srcObject && videoElement.videoWidth > 0 && isCameraActive) {
-                // Если камера устройства доступна
-                screenshotCanvas.width = videoElement.videoWidth;
-                screenshotCanvas.height = videoElement.videoHeight;
-
-                // Ждем немного для стабилизации видео
-                await new Promise(resolve => setTimeout(resolve, 50));
-
-                // Рисуем видео с камеры (фон)
-                ctx.drawImage(videoElement, 0, 0, screenshotCanvas.width, screenshotCanvas.height);
-
-                // Рисуем 3D сцену поверх видео
-                const scaleFactor = Math.min(
-                    screenshotCanvas.width / canvas.width,
-                    screenshotCanvas.height / canvas.height
-                );
-
-                const scaledWidth = canvas.width * scaleFactor;
-                const scaledHeight = canvas.height * scaleFactor;
-                const x = (screenshotCanvas.width - scaledWidth) / 2;
-                const y = (screenshotCanvas.height - scaledHeight) / 2;
-
-                ctx.drawImage(canvas, x, y, scaledWidth, scaledHeight);
-            } else {
-                // Если камера устройства недоступна, делаем обычный скриншот
-                screenshotCanvas.width = canvas.width;
-                screenshotCanvas.height = canvas.height;
-
-                // Черный фон
-                ctx.fillStyle = '#000000';
-                ctx.fillRect(0, 0, screenshotCanvas.width, screenshotCanvas.height);
-
-                // Рисуем 3D сцену
-                ctx.drawImage(canvas, 0, 0);
-            }
-
-            // Добавляем водяной знак
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-            ctx.font = 'bold 20px Arial';
-            ctx.fillText('AR Quick Look', 20, screenshotCanvas.height - 30);
-
-            // Добавляем информацию о камере
-            ctx.font = '14px Arial';
-            ctx.fillText(`Камера: ${currentCameraMode === 'user' ? 'Передняя' : 'Задняя'}`,
-                20, screenshotCanvas.height - 10);
-
-            // Восстанавливаем UI
+    setTimeout(() => {
+        const canvas = scene.canvas;
+        if (!canvas) {
+            showMessage('Ошибка: canvas не найден', 2000);
             uiContainer.style.display = originalDisplay;
-
-            // Сохраняем изображение
-            saveImage(screenshotCanvas);
-
-        } catch (error) {
-            console.error('❌ Ошибка при создании скриншота:', error);
-            showMessage('Ошибка при создании фото', 2000);
-
-            // Восстанавливаем UI в случае ошибки
-            uiContainer.style.display = originalDisplay;
+            return;
         }
-    });
+
+        // Создаем новый canvas
+        const screenshotCanvas = document.createElement('canvas');
+        screenshotCanvas.width = canvas.width;
+        screenshotCanvas.height = canvas.height;
+        const ctx = screenshotCanvas.getContext('2d');
+
+        // Заливаем фон
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, screenshotCanvas.width, screenshotCanvas.height);
+
+        // Копируем содержимое
+        ctx.drawImage(canvas, 0, 0);
+
+        // Добавляем водяной знак
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+        ctx.font = 'bold 20px Arial';
+        ctx.fillText('AR Quick Look', 20, screenshotCanvas.height - 30);
+
+        // Восстанавливаем UI
+        uiContainer.style.display = originalDisplay;
+
+        // Сохраняем изображение
+        saveImage(screenshotCanvas);
+    }, 100);
 }
 
 function saveImage(canvas) {
@@ -602,8 +440,6 @@ function resetScene() {
     }
 
     activeModel = null;
-    currentMode = 'move';
-    updateModeButtons();
 
     // Скрыть сетку
     document.getElementById('grid').setAttribute('visible', 'false');
@@ -646,28 +482,5 @@ window.addEventListener('load', function () {
     // Проверяем поддержку WebGL
     if (!scene.hasWebGL) {
         showMessage('Ваше устройство не поддерживает WebGL. Функции 3D недоступны.', 5000);
-    }
-});
-
-// ===== ОБРАБОТКА ОЧИСТКИ =====
-window.addEventListener('beforeunload', function () {
-    // Останавливаем камеру при закрытии страницы
-    if (currentStream) {
-        currentStream.getTracks().forEach(track => track.stop());
-    }
-
-    // Уничтожаем менеджер жестов
-    if (hammerManager) {
-        hammerManager.destroy();
-    }
-});
-
-// ===== ОБРАБОТКА ВИДИМОСТИ СТРАНИЦЫ =====
-document.addEventListener('visibilitychange', function () {
-    if (document.hidden && currentStream) {
-        // Останавливаем камеру когда страница не активна
-        currentStream.getTracks().forEach(track => track.stop());
-        currentStream = null;
-        isCameraActive = false;
     }
 });
