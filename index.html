@@ -108,12 +108,7 @@
 
 <body>
     <!-- A-Frame Сцена БЕЗ AR.js -->
-    <a-scene 
-    embedded 
-    arjs="sourceType: webcam; debugUIEnabled: false;"
-    vr-mode-ui="enabled: false"
-    renderer="antialias: true; precision: high; preserveDrawingBuffer: true;"
-    data-aframe-scene>
+    <a-scene embedded vr-mode-ui="enabled: false" cursor="rayOrigin: mouse">
         <!-- Камера -->
         <a-entity position="0 1.6 0">
             <a-entity raycaster="objects: .draggable" position="0 0 -1">
@@ -125,7 +120,7 @@
         <a-entity id="models-container"></a-entity>
 
         <!-- Сетка для ориентации -->
-       
+
     </a-scene>
 
     <!-- UI элементы -->
@@ -162,7 +157,6 @@
         <div class="control-button" id="photo-btn">
             📷
         </div>
-        
 
         <!-- Кнопка сброса -->
         <div class="control-button" id="reset-btn">
