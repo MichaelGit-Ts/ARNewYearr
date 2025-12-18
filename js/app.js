@@ -10,7 +10,7 @@ let modelsContainer;
 let hammerManager;
 
 // Переменные для отслеживания вращения
-let lastRotationX = 0;
+let lastRotationY = 0; // Изменил с X на Y для горизонтального вращения
 
 // ===== ИНИЦИАЛИЗАЦИЯ =====
 document.addEventListener('DOMContentLoaded', function () {
@@ -79,11 +79,11 @@ function initUI() {
         showMessage('Режим перемещения: перемещайте модель пальцем', 2000);
     });
 
-    // Кнопка вращения (ТОЛЬКО по оси X)
+    // Кнопка вращения (ГОРИЗОНТАЛЬНОЕ ВРАЩЕНИЕ)
     document.getElementById('rotate-btn').addEventListener('click', function () {
         currentMode = 'rotate';
         updateModeButtons();
-        showMessage('Режим вращения: двигайте палец по вертикали для вращения по оси X', 2000);
+        showMessage('Режим вращения: двигайте палец по ГОРИЗОНТАЛИ для вращения модели', 2000);
     });
 
     // Кнопка увеличения масштаба
@@ -187,7 +187,7 @@ function addModelToScene(modelData) {
     });
 }
 
-// ===== ИНИЦИАЛИЗАЦИЯ ЖЕСТОВ (только вращение по X) =====
+// ===== ИНИЦИАЛИЗАЦИЯ ЖЕСТОВ (горизонтальное вращение по Y) =====
 function initGestures() {
     const canvas = scene.canvas;
     if (!canvas) {
@@ -198,7 +198,7 @@ function initGestures() {
     // Создаем менеджер жестов
     hammerManager = new Hammer.Manager(canvas, {
         recognizers: [
-            [Hammer.Pan, { direction: Hammer.DIRECTION_ALL, threshold: 0 }],
+            [Hammer.Pan, { direction: Hammer.DIRECTION_HORIZONTAL, threshold: 0 }], // Только горизонтальное движение
             [Hammer.Pinch, { threshold: 0 }],
             [Hammer.Tap]
         ]
@@ -214,9 +214,9 @@ function initGestures() {
             lastTouchX = e.center.x;
             lastTouchY = e.center.y;
 
-            // Сохраняем текущее вращение модели по оси X
+            // Сохраняем текущее вращение модели по оси Y (для горизонтального вращения)
             const rotation = activeModel.getAttribute('rotation');
-            lastRotationX = rotation.x;
+            lastRotationY = rotation.y; // Изменил на Y
         }
 
         if (e.type === 'pinchstart') {
@@ -246,13 +246,13 @@ function initGestures() {
                 lastTouchY = e.center.y;
             }
             else if (currentMode === 'rotate') {
-                // Вращение модели ТОЛЬКО вокруг своей оси X
-                const deltaY = (e.center.y - lastTouchY) * 0.5;
+                // ГОРИЗОНТАЛЬНОЕ ВРАЩЕНИЕ модели вокруг своей оси Y
+                const deltaX = (e.center.x - lastTouchX) * 0.5; // Берем только горизонтальное движение
 
-                // Вращаем только по оси X
+                // Вращаем только по оси Y (горизонтальное вращение)
                 activeModel.setAttribute('rotation', {
-                    x: 0,  // Вертикальное движение = вращение по X
-                    y: lastRotationX + deltaY,                       // Y не меняем
+                    x: 0,                       // X не меняем
+                    y: lastRotationY + deltaX,  // Горизонтальное движение = вращение по Y
                     z: 0                        // Z не меняем
                 });
             }
@@ -285,7 +285,7 @@ function initGestures() {
         // Сохраняем последнее вращение
         if (activeModel) {
             const rotation = activeModel.getAttribute('rotation');
-            lastRotationX = rotation.x;
+            lastRotationY = rotation.y; // Сохраняем Y
         }
     });
 
@@ -328,25 +328,25 @@ function initGestures() {
 
             // Сохраняем вращение выбранной модели
             const rotation = activeModel.getAttribute('rotation');
-            lastRotationX = rotation.x;
+            lastRotationY = rotation.y; // Сохраняем Y
 
             showMessage(`Выбрана модель ${closestIntersection.id}`, 1500);
         }
     });
 }
 
-// ===== ФУНКЦИЯ ДЛЯ РУЧНОГО ВРАЩЕНИЯ ПО ОСИ X =====
-function rotateModelX(angle) {
+// ===== ФУНКЦИЯ ДЛЯ РУЧНОГО ВРАЩЕНИЯ ПО ОСИ Y =====
+function rotateModelY(angle) {
     if (!activeModel) return;
 
     // Получаем текущее вращение
     const rotation = activeModel.getAttribute('rotation');
 
-    // Вращаем только вокруг локальной оси X
+    // Вращаем только вокруг локальной оси Y (горизонтальное вращение)
     activeModel.setAttribute('rotation', {
-        x: rotation.x + angle,
-        y: 0,  // Y не меняем
-        z: 0   // Z не меняем
+        x: 0,                       // X не меняем
+        y: rotation.y + angle,      // Вращаем по Y
+        z: 0                        // Z не меняем
     });
 }
 
