@@ -9,6 +9,9 @@ let initialScale = { x: 1, y: 1, z: 1 };
 let modelsContainer;
 let hammerManager;
 
+// Переменные для отслеживания вращения
+let lastRotationX = 0;
+
 // ===== ИНИЦИАЛИЗАЦИЯ =====
 document.addEventListener('DOMContentLoaded', function () {
     console.log('🚀 Приложение запускается');
@@ -76,11 +79,11 @@ function initUI() {
         showMessage('Режим перемещения: перемещайте модель пальцем', 2000);
     });
 
-    // Кнопка вращения
+    // Кнопка вращения (ТОЛЬКО по оси X)
     document.getElementById('rotate-btn').addEventListener('click', function () {
         currentMode = 'rotate';
         updateModeButtons();
-        showMessage('Режим вращения: вращайте модель пальцем', 2000);
+        showMessage('Режим вращения: двигайте палец по вертикали для вращения по оси X', 2000);
     });
 
     // Кнопка увеличения масштаба
@@ -184,7 +187,7 @@ function addModelToScene(modelData) {
     });
 }
 
-// ===== ИНИЦИАЛИЗАЦИЯ ЖЕСТОВ =====
+// ===== ИНИЦИАЛИЗАЦИЯ ЖЕСТОВ (только вращение по X) =====
 function initGestures() {
     const canvas = scene.canvas;
     if (!canvas) {
@@ -196,25 +199,24 @@ function initGestures() {
     hammerManager = new Hammer.Manager(canvas, {
         recognizers: [
             [Hammer.Pan, { direction: Hammer.DIRECTION_ALL, threshold: 0 }],
-            [Hammer.Rotate, { threshold: 0 }],
             [Hammer.Pinch, { threshold: 0 }],
             [Hammer.Tap]
         ]
     });
 
     // Обработчик начала жеста
-    hammerManager.on('panstart rotatestart pinchstart', function (e) {
+    hammerManager.on('panstart pinchstart', function (e) {
         if (!activeModel) return;
 
         isInteracting = true;
 
-        if (e.type === 'panstart' && currentMode === 'move') {
+        if (e.type === 'panstart') {
             lastTouchX = e.center.x;
             lastTouchY = e.center.y;
-        }
 
-        if (e.type === 'rotatestart' && currentMode === 'rotate') {
-            // Сохраняем начальное вращение
+            // Сохраняем текущее вращение модели по оси X
+            const rotation = activeModel.getAttribute('rotation');
+            lastRotationX = rotation.x;
         }
 
         if (e.type === 'pinchstart') {
@@ -224,33 +226,36 @@ function initGestures() {
     });
 
     // Обработчик движения жеста
-    hammerManager.on('panmove rotatemove pinchmove', function (e) {
+    hammerManager.on('panmove pinchmove', function (e) {
         if (!activeModel || !isInteracting) return;
 
-        if (e.type === 'panmove' && currentMode === 'move') {
-            // Перемещение модели
-            const deltaX = (e.center.x - lastTouchX) * 0.01;
-            const deltaY = (e.center.y - lastTouchY) * -0.01;
+        if (e.type === 'panmove') {
+            if (currentMode === 'move') {
+                // Перемещение модели
+                const deltaX = (e.center.x - lastTouchX) * 0.01;
+                const deltaY = (e.center.y - lastTouchY) * -0.01;
 
-            const position = activeModel.getAttribute('position');
-            activeModel.setAttribute('position', {
-                x: position.x + deltaX,
-                y: position.y + deltaY,
-                z: position.z
-            });
+                const position = activeModel.getAttribute('position');
+                activeModel.setAttribute('position', {
+                    x: position.x + deltaX,
+                    y: position.y + deltaY,
+                    z: position.z
+                });
 
-            lastTouchX = e.center.x;
-            lastTouchY = e.center.y;
-        }
+                lastTouchX = e.center.x;
+                lastTouchY = e.center.y;
+            }
+            else if (currentMode === 'rotate') {
+                // Вращение модели ТОЛЬКО вокруг своей оси X
+                const deltaY = (e.center.y - lastTouchY) * 0.5;
 
-        if (e.type === 'rotatemove' && currentMode === 'rotate') {
-            // Вращение модели
-            const rotation = activeModel.getAttribute('rotation');
-            activeModel.setAttribute('rotation', {
-                x: rotation.x,
-                y: rotation.y + e.rotation * 0.5,
-                z: rotation.z
-            });
+                // Вращаем только по оси X
+                activeModel.setAttribute('rotation', {
+                    x: 0,  // Вертикальное движение = вращение по X
+                    y: lastRotationX + deltaY,                       // Y не меняем
+                    z: 0                        // Z не меняем
+                });
+            }
         }
 
         if (e.type === 'pinchmove') {
@@ -274,8 +279,14 @@ function initGestures() {
     });
 
     // Обработчик окончания жеста
-    hammerManager.on('panend rotateend pinchend', function () {
+    hammerManager.on('panend pinchend', function () {
         isInteracting = false;
+
+        // Сохраняем последнее вращение
+        if (activeModel) {
+            const rotation = activeModel.getAttribute('rotation');
+            lastRotationX = rotation.x;
+        }
     });
 
     // Обработчик тапа для выбора модели
@@ -314,8 +325,28 @@ function initGestures() {
 
         if (closestIntersection) {
             activeModel = closestIntersection;
+
+            // Сохраняем вращение выбранной модели
+            const rotation = activeModel.getAttribute('rotation');
+            lastRotationX = rotation.x;
+
             showMessage(`Выбрана модель ${closestIntersection.id}`, 1500);
         }
+    });
+}
+
+// ===== ФУНКЦИЯ ДЛЯ РУЧНОГО ВРАЩЕНИЯ ПО ОСИ X =====
+function rotateModelX(angle) {
+    if (!activeModel) return;
+
+    // Получаем текущее вращение
+    const rotation = activeModel.getAttribute('rotation');
+
+    // Вращаем только вокруг локальной оси X
+    activeModel.setAttribute('rotation', {
+        x: rotation.x + angle,
+        y: 0,  // Y не меняем
+        z: 0   // Z не меняем
     });
 }
 
@@ -440,6 +471,8 @@ function resetScene() {
     }
 
     activeModel = null;
+    currentMode = 'move';
+    updateModeButtons();
 
     // Скрыть сетку
     document.getElementById('grid').setAttribute('visible', 'false');
