@@ -199,7 +199,6 @@ function initGestures() {
     hammerManager = new Hammer.Manager(canvas, {
         recognizers: [
             [Hammer.Pan, { direction: Hammer.DIRECTION_HORIZONTAL, threshold: 0 }], // Только горизонтальное движение
-            [Hammer.Pinch, { threshold: 0 }],
             [Hammer.Tap]
         ]
     });
@@ -209,15 +208,6 @@ function initGestures() {
         if (!activeModel) return;
 
         isInteracting = true;
-
-        if (e.type === 'panstart') {
-            lastTouchX = e.center.x;
-            lastTouchY = e.center.y;
-
-            // Сохраняем текущее вращение модели по оси Y (для горизонтального вращения)
-            const rotation = activeModel.getAttribute('rotation');
-            lastRotationY = rotation.y; // Изменил на Y
-        }
 
         if (e.type === 'pinchstart') {
             initialDistance = e.scale;
