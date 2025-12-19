@@ -257,25 +257,6 @@ function initGestures() {
                 });
             }
         }
-
-        if (e.type === 'pinchmove') {
-            // Масштабирование модели
-            const scaleFactor = e.scale / initialDistance;
-            const newScale = {
-                x: initialScale.x * scaleFactor,
-                y: initialScale.y * scaleFactor,
-                z: initialScale.z * scaleFactor
-            };
-
-            // Ограничиваем масштабирование
-            const minScale = 0.1;
-            const maxScale = 5;
-            newScale.x = Math.max(minScale, Math.min(maxScale, newScale.x));
-            newScale.y = Math.max(minScale, Math.min(maxScale, newScale.y));
-            newScale.z = Math.max(minScale, Math.min(maxScale, newScale.z));
-
-            activeModel.setAttribute('scale', newScale);
-        }
     });
 
     // Обработчик окончания жеста
