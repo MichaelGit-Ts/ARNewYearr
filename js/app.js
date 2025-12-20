@@ -1,16 +1,15 @@
 // ===== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ =====
 let scene, camera, renderer;
 let activeModel = null;
-let currentMode = 'move'; // 'move', 'rotate'
+let currentMode = 'move';
 let isInteracting = false;
 let lastTouchX = 0, lastTouchY = 0;
 let modelsContainer;
 let hammerManager;
 
-// Переменные для отслеживания вращения
-let lastRotationY = 0;
-let originalRotation = 0; // Сохраняем начальное вращение для каждой модели
-let originalPosition = { x: 0, y: 0, z: -3 }; // Начальная позиция
+// Хранилище для состояния вращения каждой модели
+let modelRotations = new Map();
+let modelStartRotations = new Map();
 
 // ===== ИНИЦИАЛИЗАЦИЯ =====
 document.addEventListener('DOMContentLoaded', function () {
@@ -79,7 +78,7 @@ function initUI() {
         showMessage('Режим перемещения: перемещайте модель пальцем', 2000);
     });
 
-    // Кнопка вращения (ГОРИЗОНТАЛЬНОЕ ВРАЩЕНИЕ)
+    // Кнопка вращения
     document.getElementById('rotate-btn').addEventListener('click', function () {
         currentMode = 'rotate';
         updateModeButtons();
@@ -192,8 +191,10 @@ function addModelToScene(modelData) {
 
     modelsContainer.appendChild(model);
     activeModel = model;
-    originalRotation = 0; // Сбрасываем вращение для новой модели
-    lastRotationY = 0;
+
+    // Инициализируем состояние вращения для этой модели
+    modelRotations.set(modelId, 0);
+    modelStartRotations.set(modelId, 0);
 
     // Ждать загрузки модели
     model.addEventListener('model-loaded', function () {
@@ -211,7 +212,7 @@ function addModelToScene(modelData) {
     });
 }
 
-// ===== ИНИЦИАЛИЗАЦИЯ ЖЕСТОВ (горизонтальное вращение по Y) =====
+// ===== ИНИЦИАЛИЗАЦИЯ ЖЕСТОВ =====
 function initGestures() {
     const canvas = renderer.domElement;
     if (!canvas) {
@@ -219,38 +220,41 @@ function initGestures() {
         return;
     }
 
-    // Создаем менеджер жестов ТОЛЬКО для pan и tap
+    // Создаем менеджер жестов для pan и tap
     hammerManager = new Hammer.Manager(canvas, {
         recognizers: [
-            [Hammer.Pan, { direction: Hammer.DIRECTION_ALL, threshold: 0 }], // Разрешаем все направления
+            [Hammer.Pan, { direction: Hammer.DIRECTION_ALL, threshold: 0 }],
             [Hammer.Tap]
         ]
     });
 
     // Обработчик начала жеста
     hammerManager.on('panstart', function (e) {
-        // Сохраняем начальные координаты
         lastTouchX = e.center.x;
         lastTouchY = e.center.y;
 
-        // Если нет активной модели или она зафиксирована, не начинаем взаимодействие
-        if (!activeModel || activeModel.hasAttribute('data-fixed')) {
+        // Находим модель под пальцем
+        const modelUnderTouch = getModelUnderTouch(e.center.x, e.center.y);
+
+        if (modelUnderTouch) {
+            // Если модель зафиксирована, игнорируем
+            if (modelUnderTouch.hasAttribute('data-fixed')) {
+                isInteracting = false;
+                return;
+            }
+
+            // Устанавливаем активную модель
+            activeModel = modelUnderTouch;
+            isInteracting = true;
+
+            // Сохраняем начальное вращение для этой модели
+            if (currentMode === 'rotate') {
+                const rotation = activeModel.getAttribute('rotation');
+                const modelId = activeModel.id;
+                modelStartRotations.set(modelId, rotation.y);
+            }
+        } else {
             isInteracting = false;
-            return;
-        }
-
-        // Проверяем, есть ли модель под пальцем
-        if (!isModelUnderTouch(e.center.x, e.center.y)) {
-            isInteracting = false;
-            return;
-        }
-
-        isInteracting = true;
-
-        // Сохраняем начальное вращение модели (для режима вращения)
-        if (currentMode === 'rotate') {
-            const rotation = activeModel.getAttribute('rotation');
-            lastRotationY = rotation.y;
         }
     });
 
@@ -258,68 +262,59 @@ function initGestures() {
     hammerManager.on('panmove', function (e) {
         if (!activeModel || !isInteracting || activeModel.hasAttribute('data-fixed')) return;
 
-        if (currentMode === 'move') {
-            // ПЕРЕМЕЩЕНИЕ модели в мировых координатах
-            const deltaX = (e.center.x - lastTouchX) * 0.002;
-            const deltaY = (e.center.y - lastTouchY) * -0.002; // Инвертируем Y для естественного перемещения
+        const deltaX = (e.center.x - lastTouchX);
+        const deltaY = (e.center.y - lastTouchY);
 
+        if (currentMode === 'move') {
+            // ПЕРЕМЕЩЕНИЕ только активной модели
             const position = activeModel.getAttribute('position');
+            const moveSpeed = 0.002;
+
             activeModel.setAttribute('position', {
-                x: position.x + deltaX,
-                y: position.y + deltaY,
+                x: position.x + deltaX * moveSpeed,
+                y: position.y - deltaY * moveSpeed, // Инвертируем Y
                 z: position.z
             });
-
-            lastTouchX = e.center.x;
-            lastTouchY = e.center.y;
         }
         else if (currentMode === 'rotate') {
-            // ГОРИЗОНТАЛЬНОЕ ВРАЩЕНИЕ модели вокруг своей оси Y
-            const deltaX = (e.center.x - lastTouchX) * 0.5; // Берем только горизонтальное движение
+            // ВРАЩЕНИЕ только активной модели
+            const modelId = activeModel.id;
+            const startRotation = modelStartRotations.get(modelId) || 0;
+            const rotateSpeed = 0.5;
 
-            // Вращаем только по оси Y (горизонтальное вращение)
-            const newRotationY = lastRotationY + deltaX;
+            const newRotationY = startRotation + deltaX * rotateSpeed;
+
             activeModel.setAttribute('rotation', {
                 x: 0,
                 y: newRotationY,
                 z: 0
             });
+
+            // Сохраняем текущее вращение
+            modelRotations.set(modelId, newRotationY);
         }
+
+        lastTouchX = e.center.x;
+        lastTouchY = e.center.y;
     });
 
     // Обработчик окончания жеста
     hammerManager.on('panend', function () {
         isInteracting = false;
-
-        // Сохраняем последнее вращение (для режима вращения)
-        if (activeModel && currentMode === 'rotate' && !activeModel.hasAttribute('data-fixed')) {
-            const rotation = activeModel.getAttribute('rotation');
-            lastRotationY = rotation.y;
-        }
     });
 
     // Обработчик тапа для выбора модели
     hammerManager.on('tap', function (e) {
-        console.log('Tap detected at:', e.center.x, e.center.y);
+        const modelUnderTouch = getModelUnderTouch(e.center.x, e.center.y);
 
-        // Проверяем, есть ли модель под пальцем
-        const selectedModel = getModelUnderTouch(e.center.x, e.center.y);
-
-        if (selectedModel) {
-            console.log('Model found:', selectedModel.id);
-
+        if (modelUnderTouch) {
             // Проверяем, не зафиксирована ли модель
-            if (selectedModel.hasAttribute('data-fixed')) {
-                showMessage('Эта модель зафиксирована. Выберите другую модель', 2000);
+            if (modelUnderTouch.hasAttribute('data-fixed')) {
+                showMessage('Эта модель зафиксирована', 1500);
                 return;
             }
 
-            // Выбираем модель
-            activeModel = selectedModel;
-
-            // Сохраняем вращение выбранной модели
-            const rotation = activeModel.getAttribute('rotation');
-            lastRotationY = rotation.y;
+            activeModel = modelUnderTouch;
 
             // Обновляем кнопку фиксации
             const fixBtn = document.getElementById('fix-btn');
@@ -333,16 +328,9 @@ function initGestures() {
                 fixBtn.style.color = '';
             }
 
-            showMessage(`Выбрана модель`, 1500);
-        } else {
-            console.log('No model found under touch');
+            showMessage('Модель выбрана', 1000);
         }
     });
-}
-
-// ===== ФУНКЦИЯ ПРОВЕРКИ, НАХОДИТСЯ ЛИ МОДЕЛЬ ПОД КАСАНИЕМ =====
-function isModelUnderTouch(touchX, touchY) {
-    return getModelUnderTouch(touchX, touchY) !== null;
 }
 
 // ===== ФУНКЦИЯ ПОЛУЧЕНИЯ МОДЕЛИ ПОД КАСАНИЕМ =====
@@ -350,7 +338,7 @@ function getModelUnderTouch(touchX, touchY) {
     const canvas = renderer.domElement;
     const rect = canvas.getBoundingClientRect();
 
-    // Преобразуем координаты касания в нормализованные координаты устройства (-1 to 1)
+    // Преобразуем координаты касания в нормализованные координаты устройства
     const x = ((touchX - rect.left) / rect.width) * 2 - 1;
     const y = -((touchY - rect.top) / rect.height) * 2 + 1;
 
@@ -364,21 +352,22 @@ function getModelUnderTouch(touchX, touchY) {
     let closestDistance = Infinity;
 
     models.forEach(model => {
-        // Пропускаем зафиксированные модели
-        if (model.hasAttribute('data-fixed')) {
-            return;
-        }
-
+        // Пропускаем фиксированные модели только для выбора, но не для взаимодействия
+        // (в initGestures мы уже проверяем фиксацию)
         if (model.object3D) {
             // Проверяем пересечение луча с моделью
-            const intersects = raycaster.intersectObject(model.object3D, true);
+            try {
+                const intersects = raycaster.intersectObject(model.object3D, true);
 
-            if (intersects.length > 0) {
-                const distance = intersects[0].distance;
-                if (distance < closestDistance) {
-                    closestDistance = distance;
-                    closestIntersection = model;
+                if (intersects.length > 0) {
+                    const distance = intersects[0].distance;
+                    if (distance < closestDistance) {
+                        closestDistance = distance;
+                        closestIntersection = model;
+                    }
                 }
+            } catch (error) {
+                console.warn('Ошибка при проверке пересечения:', error);
             }
         }
     });
@@ -386,26 +375,8 @@ function getModelUnderTouch(touchX, touchY) {
     return closestIntersection;
 }
 
-// ===== ФУНКЦИЯ ДЛЯ РУЧНОГО ВРАЩЕНИЯ ПО ОСИ Y =====
-function rotateModelY(angle) {
-    if (!activeModel || activeModel.hasAttribute('data-fixed')) return;
-
-    // Получаем текущее вращение
-    const rotation = activeModel.getAttribute('rotation');
-
-    // Вращаем только вокруг локальной оси Y (горизонтальное вращение)
-    activeModel.setAttribute('rotation', {
-        x: 0,
-        y: rotation.y + angle,
-        z: 0
-    });
-
-    lastRotationY = rotation.y + angle;
-}
-
-// ===== СКРИНШОТ =====
+// ===== УПРОЩЕННАЯ ФУНКЦИЯ СКРИНШОТА =====
 function takeScreenshot() {
-    // Проверяем, есть ли хотя бы одна модель на сцене
     const models = modelsContainer.querySelectorAll('.draggable');
     if (models.length === 0) {
         showMessage('Сначала разместите хотя бы одну модель!', 2000);
@@ -434,11 +405,7 @@ function takeScreenshot() {
         screenshotCanvas.height = canvas.height;
         const ctx = screenshotCanvas.getContext('2d');
 
-        // Заливаем фон
-        ctx.fillStyle = '#000000';
-        ctx.fillRect(0, 0, screenshotCanvas.width, screenshotCanvas.height);
-
-        // Копируем содержимое
+        // Копируем содержимое canvas сцены
         ctx.drawImage(canvas, 0, 0);
 
         // Добавляем водяной знак
@@ -503,6 +470,10 @@ function resetScene() {
     currentMode = 'move';
     updateModeButtons();
 
+    // Очищаем хранилища вращений
+    modelRotations.clear();
+    modelStartRotations.clear();
+
     // Сбросить кнопку фиксации
     const fixBtn = document.getElementById('fix-btn');
     fixBtn.innerHTML = '🔒';
@@ -524,28 +495,3 @@ function showMessage(text, duration = 3000) {
         messageEl.style.display = 'none';
     }, duration);
 }
-
-// ===== КОМПОНЕНТ ДЛЯ ОБРАБОТКИ ЖЕСТОВ =====
-AFRAME.registerComponent('gesture-handler', {
-    schema: {
-        enabled: { default: true }
-    },
-
-    init: function () {
-        this.el.addEventListener('model-loaded', this.onModelLoaded.bind(this));
-    },
-
-    onModelLoaded: function () {
-        console.log('Компонент жестов активирован для модели');
-    }
-});
-
-// ===== ИНИЦИАЛИЗАЦИЯ ПРИ ЗАГРУЗКЕ =====
-window.addEventListener('load', function () {
-    console.log('Страница полностью загружена');
-
-    // Проверяем поддержку WebGL
-    if (!scene.hasWebGL) {
-        showMessage('Ваше устройство не поддерживает WebGL. Функции 3D недоступны.', 5000);
-    }
-});
