@@ -5,11 +5,9 @@ let currentMode = 'move';
 let isInteracting = false;
 let lastTouchX = 0, lastTouchY = 0;
 let modelsContainer;
-let hammerManager;
 
-// Хранилище для состояния вращения каждой модели
-let modelRotations = new Map();
-let modelStartRotations = new Map();
+// Храним начальные данные для каждой модели
+let modelInitialData = new Map();
 
 // ===== ИНИЦИАЛИЗАЦИЯ =====
 document.addEventListener('DOMContentLoaded', function () {
@@ -37,7 +35,7 @@ document.addEventListener('DOMContentLoaded', function () {
         camera = cameraEl.getObject3D('camera');
         renderer = scene.renderer;
 
-        // Инициализация жестов после загрузки сцены
+        // Инициализация жестов
         initGestures();
 
         // Показываем инструкцию
@@ -87,7 +85,7 @@ function initUI() {
 
     // Кнопка увеличения масштаба
     document.getElementById('scale-up-btn').addEventListener('click', function () {
-        if (activeModel && !activeModel.hasAttribute('data-fixed')) {
+        if (activeModel && !isModelFixed(activeModel)) {
             const scale = activeModel.getAttribute('scale');
             const newScale = {
                 x: scale.x * 1.2,
@@ -101,7 +99,7 @@ function initUI() {
 
     // Кнопка уменьшения масштаба
     document.getElementById('scale-down-btn').addEventListener('click', function () {
-        if (activeModel && !activeModel.hasAttribute('data-fixed')) {
+        if (activeModel && !isModelFixed(activeModel)) {
             const scale = activeModel.getAttribute('scale');
             const newScale = {
                 x: scale.x * 0.8,
@@ -121,7 +119,7 @@ function initUI() {
         }
 
         // Переключаем состояние фиксации
-        if (activeModel.hasAttribute('data-fixed')) {
+        if (isModelFixed(activeModel)) {
             // Разблокировать модель
             activeModel.removeAttribute('data-fixed');
             this.innerHTML = '🔒';
@@ -166,6 +164,11 @@ function updateModeButtons() {
     rotateBtn.classList.toggle('active', currentMode === 'rotate');
 }
 
+// ===== ПРОВЕРКА ФИКСАЦИИ МОДЕЛИ =====
+function isModelFixed(model) {
+    return model && model.hasAttribute('data-fixed');
+}
+
 // ===== ДОБАВЛЕНИЕ МОДЕЛИ НА СЦЕНУ =====
 function addModelToScene(modelData) {
     console.log('➕ Добавляем модель:', modelData.name);
@@ -180,7 +183,7 @@ function addModelToScene(modelData) {
     // Генерируем уникальный ID для модели
     const modelId = `model-${modelData.id}-${Date.now()}`;
 
-    // Создать новую модель
+    // Создать новую модель - просто в сцене, без лишних контейнеров
     const model = document.createElement('a-entity');
     model.id = modelId;
     model.classList.add('draggable');
@@ -189,12 +192,16 @@ function addModelToScene(modelData) {
     model.setAttribute('position', '0 0 -3');
     model.setAttribute('rotation', '0 0 0');
 
+    // Добавляем модель прямо в контейнер сцену
     modelsContainer.appendChild(model);
     activeModel = model;
 
-    // Инициализируем состояние вращения для этой модели
-    modelRotations.set(modelId, 0);
-    modelStartRotations.set(modelId, 0);
+    // Сохраняем начальные данные модели
+    modelInitialData.set(modelId, {
+        position: { x: 0, y: 0, z: -3 },
+        rotation: { x: 0, y: 0, z: 0 },
+        scale: { x: 0.5, y: 0.5, z: 0.5 }
+    });
 
     // Ждать загрузки модели
     model.addEventListener('model-loaded', function () {
@@ -220,131 +227,142 @@ function initGestures() {
         return;
     }
 
-    // Создаем менеджер жестов для pan и tap
-    hammerManager = new Hammer.Manager(canvas, {
-        recognizers: [
-            [Hammer.Pan, { direction: Hammer.DIRECTION_ALL, threshold: 0 }],
-            [Hammer.Tap]
-        ]
-    });
+    // Обработчики событий мыши и касаний
+    canvas.addEventListener('mousedown', onPointerDown);
+    canvas.addEventListener('touchstart', onPointerDown);
+    canvas.addEventListener('mousemove', onPointerMove);
+    canvas.addEventListener('touchmove', onPointerMove);
+    canvas.addEventListener('mouseup', onPointerUp);
+    canvas.addEventListener('touchend', onPointerUp);
+    canvas.addEventListener('mouseleave', onPointerUp);
 
-    // Обработчик начала жеста
-    hammerManager.on('panstart', function (e) {
-        lastTouchX = e.center.x;
-        lastTouchY = e.center.y;
-
-        // Находим модель под пальцем
-        const modelUnderTouch = getModelUnderTouch(e.center.x, e.center.y);
-
-        if (modelUnderTouch) {
-            // Если модель зафиксирована, игнорируем
-            if (modelUnderTouch.hasAttribute('data-fixed')) {
-                isInteracting = false;
-                return;
-            }
-
-            // Устанавливаем активную модель
-            activeModel = modelUnderTouch;
-            isInteracting = true;
-
-            // Сохраняем начальное вращение для этой модели
-            if (currentMode === 'rotate') {
-                const rotation = activeModel.getAttribute('rotation');
-                const modelId = activeModel.id;
-                modelStartRotations.set(modelId, rotation.y);
-            }
-        } else {
-            isInteracting = false;
-        }
-    });
-
-    // Обработчик движения жеста
-    hammerManager.on('panmove', function (e) {
-        if (!activeModel || !isInteracting || activeModel.hasAttribute('data-fixed')) return;
-
-        const deltaX = (e.center.x - lastTouchX);
-        const deltaY = (e.center.y - lastTouchY);
-
-        if (currentMode === 'move') {
-            // ПЕРЕМЕЩЕНИЕ только активной модели
-            const position = activeModel.getAttribute('position');
-            const moveSpeed = 0.002;
-
-            activeModel.setAttribute('position', {
-                x: position.x + deltaX * moveSpeed,
-                y: position.y - deltaY * moveSpeed, // Инвертируем Y
-                z: position.z
-            });
-        }
-        else if (currentMode === 'rotate') {
-            // ВРАЩЕНИЕ только активной модели
-            const modelId = activeModel.id;
-            const startRotation = modelStartRotations.get(modelId) || 0;
-            const rotateSpeed = 0.5;
-
-            const newRotationY = startRotation + deltaX * rotateSpeed;
-
-            activeModel.setAttribute('rotation', {
-                x: 0,
-                y: newRotationY,
-                z: 0
-            });
-
-            // Сохраняем текущее вращение
-            modelRotations.set(modelId, newRotationY);
-        }
-
-        lastTouchX = e.center.x;
-        lastTouchY = e.center.y;
-    });
-
-    // Обработчик окончания жеста
-    hammerManager.on('panend', function () {
-        isInteracting = false;
-    });
-
-    // Обработчик тапа для выбора модели
-    hammerManager.on('tap', function (e) {
-        const modelUnderTouch = getModelUnderTouch(e.center.x, e.center.y);
-
-        if (modelUnderTouch) {
-            // Проверяем, не зафиксирована ли модель
-            if (modelUnderTouch.hasAttribute('data-fixed')) {
-                showMessage('Эта модель зафиксирована', 1500);
-                return;
-            }
-
-            activeModel = modelUnderTouch;
-
-            // Обновляем кнопку фиксации
-            const fixBtn = document.getElementById('fix-btn');
-            if (activeModel.hasAttribute('data-fixed')) {
-                fixBtn.innerHTML = '🔓';
-                fixBtn.style.backgroundColor = '#007AFF';
-                fixBtn.style.color = 'white';
-            } else {
-                fixBtn.innerHTML = '🔒';
-                fixBtn.style.backgroundColor = '';
-                fixBtn.style.color = '';
-            }
-
-            showMessage('Модель выбрана', 1000);
-        }
-    });
+    // Предотвращаем стандартное поведение касаний
+    canvas.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
+    canvas.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
 }
 
-// ===== ФУНКЦИЯ ПОЛУЧЕНИЯ МОДЕЛИ ПОД КАСАНИЕМ =====
-function getModelUnderTouch(touchX, touchY) {
+// ===== ОБРАБОТЧИКИ КАСАНИЙ =====
+function onPointerDown(event) {
+    event.preventDefault();
+
+    // Получаем координаты касания
+    const coords = getTouchCoords(event);
+    if (!coords) return;
+
+    const { x, y } = coords;
+
+    // Находим модель под касанием
+    const modelUnderTouch = getModelUnderTouch(x, y);
+
+    if (modelUnderTouch) {
+        // Если модель зафиксирована, игнорируем
+        if (isModelFixed(modelUnderTouch)) {
+            showMessage('Модель зафиксирована', 1500);
+            isInteracting = false;
+            return;
+        }
+
+        // Выбираем модель
+        activeModel = modelUnderTouch;
+        isInteracting = true;
+        lastTouchX = x;
+        lastTouchY = y;
+
+        // Обновляем кнопку фиксации
+        const fixBtn = document.getElementById('fix-btn');
+        if (isModelFixed(activeModel)) {
+            fixBtn.innerHTML = '🔓';
+            fixBtn.style.backgroundColor = '#007AFF';
+            fixBtn.style.color = 'white';
+        } else {
+            fixBtn.innerHTML = '🔒';
+            fixBtn.style.backgroundColor = '';
+            fixBtn.style.color = '';
+        }
+
+        showMessage('Модель выбрана', 1000);
+    }
+}
+
+function onPointerMove(event) {
+    if (!isInteracting || !activeModel || isModelFixed(activeModel)) return;
+
+    event.preventDefault();
+
+    const coords = getTouchCoords(event);
+    if (!coords) return;
+
+    const { x, y } = coords;
+
+    const deltaX = x - lastTouchX;
+    const deltaY = y - lastTouchY;
+
+    if (currentMode === 'move') {
+        // ПЕРЕМЕЩЕНИЕ модели
+        const position = activeModel.getAttribute('position');
+        const moveSpeed = 0.005;
+
+        activeModel.setAttribute('position', {
+            x: position.x + deltaX * moveSpeed,
+            y: position.y - deltaY * moveSpeed, // Инвертируем Y
+            z: position.z
+        });
+    }
+    else if (currentMode === 'rotate') {
+        // ВРАЩЕНИЕ модели вокруг своей оси Y
+        const rotation = activeModel.getAttribute('rotation');
+        const rotateSpeed = 1;
+
+        // Вращаем ТОЛЬКО по оси Y (горизонтальное вращение)
+        activeModel.setAttribute('rotation', {
+            x: 0,
+            y: rotation.y + deltaX * rotateSpeed,
+            z: 0
+        });
+    }
+
+    lastTouchX = x;
+    lastTouchY = y;
+}
+
+function onPointerUp() {
+    isInteracting = false;
+}
+
+// ===== ПОЛУЧЕНИЕ КООРДИНАТ КАСАНИЯ =====
+function getTouchCoords(event) {
+    let clientX, clientY;
+
+    if (event.type.includes('touch')) {
+        if (event.touches.length > 0) {
+            clientX = event.touches[0].clientX;
+            clientY = event.touches[0].clientY;
+        } else if (event.changedTouches.length > 0) {
+            clientX = event.changedTouches[0].clientX;
+            clientY = event.changedTouches[0].clientY;
+        } else {
+            return null;
+        }
+    } else {
+        clientX = event.clientX;
+        clientY = event.clientY;
+    }
+
+    return { x: clientX, y: clientY };
+}
+
+// ===== ПОЛУЧЕНИЕ МОДЕЛИ ПОД КАСАНИЕМ =====
+function getModelUnderTouch(x, y) {
     const canvas = renderer.domElement;
     const rect = canvas.getBoundingClientRect();
 
     // Преобразуем координаты касания в нормализованные координаты устройства
-    const x = ((touchX - rect.left) / rect.width) * 2 - 1;
-    const y = -((touchY - rect.top) / rect.height) * 2 + 1;
+    const normalizedX = ((x - rect.left) / rect.width) * 2 - 1;
+    const normalizedY = -((y - rect.top) / rect.height) * 2 + 1;
 
     // Создаем луч из камеры
     const raycaster = new THREE.Raycaster();
-    raycaster.setFromCamera(new THREE.Vector2(x, y), camera);
+    raycaster.setFromCamera(new THREE.Vector2(normalizedX, normalizedY), camera);
 
     // Получаем все модели
     const models = scene.querySelectorAll('.draggable');
@@ -352,18 +370,22 @@ function getModelUnderTouch(touchX, touchY) {
     let closestDistance = Infinity;
 
     models.forEach(model => {
-        // Пропускаем фиксированные модели только для выбора, но не для взаимодействия
-        // (в initGestures мы уже проверяем фиксацию)
         if (model.object3D) {
-            // Проверяем пересечение луча с моделью
             try {
-                const intersects = raycaster.intersectObject(model.object3D, true);
+                // Создаем ограничивающий бокс для модели
+                const box = new THREE.Box3().setFromObject(model.object3D);
 
-                if (intersects.length > 0) {
-                    const distance = intersects[0].distance;
-                    if (distance < closestDistance) {
-                        closestDistance = distance;
-                        closestIntersection = model;
+                // Проверяем пересечение луча с ограничивающим боксом
+                if (raycaster.ray.intersectsBox(box)) {
+                    // Проверяем более точное пересечение с мешами
+                    const intersects = raycaster.intersectObject(model.object3D, true);
+
+                    if (intersects.length > 0) {
+                        const distance = intersects[0].distance;
+                        if (distance < closestDistance) {
+                            closestDistance = distance;
+                            closestIntersection = model;
+                        }
                     }
                 }
             } catch (error) {
@@ -375,7 +397,7 @@ function getModelUnderTouch(touchX, touchY) {
     return closestIntersection;
 }
 
-// ===== УПРОЩЕННАЯ ФУНКЦИЯ СКРИНШОТА =====
+// ===== СКРИНШОТ =====
 function takeScreenshot() {
     const models = modelsContainer.querySelectorAll('.draggable');
     if (models.length === 0) {
@@ -470,9 +492,8 @@ function resetScene() {
     currentMode = 'move';
     updateModeButtons();
 
-    // Очищаем хранилища вращений
-    modelRotations.clear();
-    modelStartRotations.clear();
+    // Очищаем хранилища данных
+    modelInitialData.clear();
 
     // Сбросить кнопку фиксации
     const fixBtn = document.getElementById('fix-btn');
